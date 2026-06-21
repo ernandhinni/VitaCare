@@ -1,0 +1,1432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VitaCare – Emergency Resource Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+:root {
+  --bg:#060C18; --surface:#0D1626; --surface2:#131E30; --border:rgba(255,255,255,0.07);
+  --blue:#1E7FFF; --blue-dim:rgba(30,127,255,0.15);
+  --red:#FF3B3B;  --red-dim:rgba(255,59,59,0.15);
+  --orange:#FF9500; --orange-dim:rgba(255,149,0,0.15);
+  --green:#00D68F;  --green-dim:rgba(0,214,143,0.15);
+  --text:#E8EDF5; --text-dim:#7A8BA4;
+  --font-d:'Syne',sans-serif; --font-b:'DM Sans',sans-serif; --font-m:'JetBrains Mono',monospace;
+  --radius:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:var(--font-b);display:flex;flex-direction:column;}
+
+.main > *{min-width:0;}
+/* ── TOP BAR ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;height:54px;overflow:hidden;min-width:0;}
+.logo{display:flex;align-items:center;gap:10px;}
+.logo img{height:32px;}
+.logo-text{font-family:var(--font-d);font-size:1.1rem;font-weight:800;}
+.logo-text .v{color:var(--blue);} .logo-text .c{color:var(--red);}
+.live-badge{display:flex;align-items:center;gap:5px;background:var(--red-dim);border:1px solid var(--red);color:var(--red);padding:4px 10px;border-radius:20px;font-size:0.68rem;font-weight:700;font-family:var(--font-m);}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--red);animation:pdot 1.2s infinite;}
+@keyframes pdot{0%,100%{opacity:1}50%{opacity:0.3}}
+.topbar-time{font-family:var(--font-m);font-size:0.78rem;color:var(--text-dim);}
+.topbar-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text-dim);padding:5px 10px;border-radius:8px;cursor:pointer;font-family:var(--font-b);font-size:0.75rem;transition:all 0.2s;white-space:nowrap;}
+.btn-ghost:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-dim);}
+.btn-triage{background:var(--blue);color:#fff;border:none;padding:5px 12px;border-radius:8px;cursor:pointer;font-family:var(--font-d);font-weight:700;font-size:0.75rem;transition:all 0.2s;white-space:nowrap;}
+.btn-triage:hover{background:#0066dd;box-shadow:0 0 20px rgba(30,127,255,0.4);}
+.btn-emergency{background:var(--red);color:#fff;border:none;padding:5px 12px;border-radius:8px;cursor:pointer;font-family:var(--font-d);font-weight:700;font-size:0.75rem;transition:all 0.2s;white-space:nowrap;}
+.btn-emergency:hover{background:#ff5252;box-shadow:0 0 20px rgba(255,59,59,0.4);}
+
+/* ── LAYOUT ── */
+.main{display:grid;grid-template-columns:250px minmax(0,1fr) 280px;height:calc(100vh - 54px);overflow:hidden;width:100%;}
+
+/* ── LEFT ── */
+.left-panel{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+.ph{padding:12px 14px 8px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.pt{font-family:var(--font-d);font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-dim);}
+.pscroll{overflow-y:auto;flex:1;}
+.pscroll::-webkit-scrollbar{width:3px;} .pscroll::-webkit-scrollbar-thumb{background:var(--border);}
+
+.stats-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px;}
+.sc{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;}
+.sv{font-family:var(--font-d);font-size:1.25rem;font-weight:800;}
+.sl{font-size:0.62rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-top:2px;}
+.sc.blue .sv{color:var(--blue);} .sc.red .sv{color:var(--red);} .sc.green .sv{color:var(--green);} .sc.orange .sv{color:var(--orange);}
+
+.hosp-item{padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;}
+.hosp-item:hover{background:var(--surface2);}
+.hosp-item.sel{background:var(--blue-dim);border-left:3px solid var(--blue);}
+.hh{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;}
+.hn{font-size:0.78rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;}
+.chip{font-size:0.58rem;font-weight:700;padding:2px 7px;border-radius:10px;text-transform:uppercase;letter-spacing:0.4px;}
+.chip-Available{background:var(--green-dim);color:var(--green);border:1px solid var(--green);}
+.chip-Limited{background:var(--orange-dim);color:var(--orange);border:1px solid var(--orange);}
+.chip-Full{background:var(--red-dim);color:var(--red);border:1px solid var(--red);}
+.hm{display:flex;gap:10px;}
+.hmet{font-size:0.66rem;color:var(--text-dim);}
+.hmet strong{color:var(--text);}
+
+/* ── CENTER: MAP + LEGEND BAR + ALERT TICKER ── */
+.center{display:flex;flex-direction:column;}
+.map-wrap{flex:1;position:relative;}
+#map{width:100%;height:100%;}
+
+/* FIX 5 ── Legend outside the map, in its own bar */
+.legend-bar{flex-shrink:0;background:var(--surface);border-top:1px solid var(--border);padding:7px 18px;display:flex;align-items:center;gap:20px;}
+.legend-lbl{font-family:var(--font-d);font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-dim);}
+.leg-item{display:flex;align-items:center;gap:6px;font-size:0.7rem;color:var(--text-dim);}
+.leg-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+
+.alert-bar{flex-shrink:0;overflow:hidden;height:30px;background:var(--surface2);border-top:1px solid var(--border);display:flex;align-items:center;}
+.alert-scroll{display:flex;gap:30px;animation:sx 22s linear infinite;padding:0 16px;white-space:nowrap;}
+@keyframes sx{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.ai{display:flex;align-items:center;gap:6px;font-size:0.69rem;}
+.ai.critical{color:var(--red);} .ai.warning{color:var(--orange);} .ai.info{color:var(--blue);}
+
+/* ── RIGHT PANEL ── */
+.right-panel{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+.tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
+.tab{flex:1;padding:8px 1px;text-align:center;font-size:0.55rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;cursor:pointer;color:var(--text-dim);border-bottom:2px solid transparent;transition:all 0.2s;overflow:hidden;}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.tc{display:none;flex:1;flex-direction:column;overflow:hidden;}
+.tc.active{display:flex;}
+.pb{overflow-y:auto;flex:1;padding:10px;min-width:0;}
+.pb::-webkit-scrollbar{width:3px;} .pb::-webkit-scrollbar-thumb{background:var(--border);}
+
+/* Hospital detail */
+.rrow{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;min-width:0;}
+.rc{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 6px;text-align:center;min-width:0;overflow:hidden;}
+.rv{font-family:var(--font-d);font-size:0.95rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rl{font-size:0.6rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;}
+.pbar{background:rgba(255,255,255,0.07);border-radius:4px;height:5px;margin-top:5px;overflow:hidden;}
+.pfill{height:100%;border-radius:4px;transition:width 0.5s;}
+.dept-item{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:0.72rem;}
+
+/* FIX 2 ── Ambulance priority */
+.amb-item{padding:10px 12px;border-bottom:1px solid var(--border);}
+.amb-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+.amb-cs{font-family:var(--font-m);font-size:0.82rem;font-weight:600;color:var(--blue);}
+.amb-chip{font-size:0.58rem;font-weight:700;padding:2px 7px;border-radius:10px;}
+.amb-Available{background:var(--green-dim);color:var(--green);border:1px solid var(--green);}
+.amb-EnRoute{background:var(--blue-dim);color:var(--blue);border:1px solid var(--blue);}
+.amb-Busy{background:var(--orange-dim);color:var(--orange);border:1px solid var(--orange);}
+.prio-row{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+.pbadge{font-size:0.58rem;font-weight:700;padding:2px 7px;border-radius:8px;}
+.pbadge-Critical{background:var(--red-dim);color:var(--red);border:1px solid var(--red);}
+.pbadge-Moderate{background:var(--orange-dim);color:var(--orange);border:1px solid var(--orange);}
+.pbadge-Mild{background:var(--green-dim);color:var(--green);border:1px solid var(--green);}
+.pbadge-None{background:rgba(255,255,255,0.05);color:var(--text-dim);border:1px solid var(--border);}
+.amb-det{font-size:0.67rem;color:var(--text-dim);line-height:1.5;}
+.call-btn{margin-top:6px;width:100%;padding:5px;background:var(--green-dim);border:1px solid var(--green);color:var(--green);border-radius:7px;cursor:pointer;font-size:0.67rem;font-weight:700;font-family:var(--font-d);transition:all 0.2s;}
+.call-btn:hover{background:var(--green);color:#000;}
+
+/* Patient list */
+.pat-item{padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;}
+.pat-item:hover{background:var(--surface2);}
+.pat-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;}
+.pat-name{font-size:0.82rem;font-weight:600;}
+.pat-meta{font-size:0.67rem;color:var(--text-dim);line-height:1.4;}
+
+/* Predictions */
+.pred-wrap{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px;margin-bottom:10px;height:165px;}
+.risk-item{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;}
+.risk-lbl{font-size:0.72rem;color:var(--text-dim);}
+.risk-badge{font-size:0.67rem;font-weight:700;padding:3px 10px;border-radius:8px;}
+.risk-High{background:var(--red-dim);color:var(--red);}
+.risk-Medium{background:var(--orange-dim);color:var(--orange);}
+.risk-Low{background:var(--green-dim);color:var(--green);}
+
+
+/* ── Hospital detail inner tabs ── */
+.htabs{display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid var(--border);}
+.htab{flex:1;padding:7px 4px;text-align:center;font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;cursor:pointer;color:var(--text-dim);border-bottom:2px solid transparent;transition:all 0.2s;}
+.htab.ha{color:var(--blue);border-bottom-color:var(--blue);}
+.hpanel{display:none;} .hpanel.ha{display:block;}
+
+/* Stars */
+.stars{color:#F5A623;font-size:0.75rem;letter-spacing:1px;}
+.rating-num{font-family:var(--font-d);font-size:1.1rem;font-weight:800;color:var(--text);}
+.rating-cnt{font-size:0.62rem;color:var(--text-dim);}
+
+/* Doctor card */
+.doc-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:7px;display:flex;align-items:center;gap:10px;}
+.doc-avatar{width:36px;height:36px;border-radius:50%;background:var(--blue-dim);border:1px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:var(--font-d);font-size:0.7rem;font-weight:700;color:var(--blue);flex-shrink:0;}
+.doc-name{font-size:0.78rem;font-weight:600;margin-bottom:2px;}
+.doc-spec{font-size:0.65rem;color:var(--blue);margin-bottom:2px;}
+.doc-meta{font-size:0.62rem;color:var(--text-dim);}
+.doc-star{font-size:0.65rem;color:#F5A623;margin-left:auto;flex-shrink:0;text-align:right;}
+
+/* Review card */
+.rev-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:7px;}
+.rev-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;}
+.rev-author{font-size:0.75rem;font-weight:600;}
+.rev-date{font-size:0.62rem;color:var(--text-dim);}
+.rev-text{font-size:0.72rem;color:var(--text-dim);line-height:1.5;}
+
+/* Hospital info row */
+.info-row{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
+.info-pill{background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:0.62rem;color:var(--text-dim);}
+.info-pill span{color:var(--text);font-weight:600;}
+
+/* ── Patient Records Drawer ── */
+#records-drawer{
+  position:fixed;bottom:0;left:0;right:0;z-index:700;
+  background:var(--surface);border-top:1px solid var(--border);
+  transform:translateY(100%);transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);
+  max-height:70vh;display:flex;flex-direction:column;
+}
+#records-drawer.open{transform:translateY(0);}
+.drawer-handle{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);flex-shrink:0;cursor:pointer;}
+.drawer-title{font-family:var(--font-d);font-size:0.85rem;font-weight:800;display:flex;align-items:center;gap:8px;}
+.drawer-badge{background:var(--red-dim);color:var(--red);border:1px solid var(--red);border-radius:12px;padding:2px 8px;font-size:0.62rem;font-weight:700;}
+.drawer-body{overflow-y:auto;flex:1;padding:14px 20px;}
+.drawer-body::-webkit-scrollbar{width:4px;} .drawer-body::-webkit-scrollbar-thumb{background:var(--border);}
+.rec-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px;}
+.rec-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.rec-name{font-family:var(--font-d);font-size:0.88rem;font-weight:800;}
+.rec-id{font-family:var(--font-m);font-size:0.65rem;color:var(--text-dim);}
+.rec-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;}
+.rec-field{font-size:0.67rem;}
+.rec-field-lbl{color:var(--text-dim);margin-bottom:2px;}
+.rec-field-val{color:var(--text);font-weight:600;}
+.rec-ai{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:0.7rem;color:var(--text-dim);line-height:1.5;}
+.rec-ai strong{color:var(--text);}
+.rec-tabs{display:flex;gap:6px;margin-bottom:10px;}
+.rec-tab{padding:4px 12px;border-radius:16px;border:0.5px solid var(--border);background:var(--surface2);color:var(--text-dim);cursor:pointer;font-size:0.68rem;font-weight:600;transition:all 0.2s;}
+.rec-tab.active{background:var(--blue-dim);color:var(--blue);border-color:var(--blue);}
+.rec-search{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-family:var(--font-b);font-size:0.82rem;outline:none;margin-bottom:12px;}
+.rec-search:focus{border-color:var(--blue);}
+/* Floating records button */
+#records-fab{
+  position:fixed;bottom:20px;right:20px;z-index:600;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:8px 14px;cursor:pointer;
+  display:flex;align-items:center;gap:8px;
+  font-family:var(--font-d);font-size:0.72rem;font-weight:700;
+  color:var(--text);transition:all 0.2s;
+  box-shadow:0 4px 16px rgba(0,0,0,0.3);
+}
+#records-fab:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-dim);}
+#records-fab-count{background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:0.6rem;}
+
+/* ════════════════════════════════════
+   FIX 4: TRIAGE — FULL DEDICATED PAGE
+   ════════════════════════════════════ */
+#triage-page{
+  position:fixed;top:0;left:0;right:0;bottom:0;z-index:800;
+  background:var(--bg);display:none;flex-direction:column;
+}
+#triage-page.open{display:flex;}
+.triage-bar{display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border);height:54px;flex-shrink:0;}
+.triage-bar-title{font-family:var(--font-d);font-size:0.98rem;font-weight:800;display:flex;align-items:center;gap:10px;}
+.triage-bar-right{display:flex;gap:10px;align-items:center;}
+.triage-body{display:grid;grid-template-columns:1fr 1fr;flex:1;overflow:hidden;}
+
+/* Form side */
+.tform{padding:28px 32px;overflow-y:auto;border-right:1px solid var(--border);}
+.tform::-webkit-scrollbar{width:4px;} .tform::-webkit-scrollbar-thumb{background:var(--border);}
+.fsec{font-family:var(--font-d);font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.fg{margin-bottom:18px;}
+.fl{font-size:0.67rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;display:block;}
+.fi,.fsel,.fta{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font-family:var(--font-b);font-size:0.85rem;transition:border-color 0.2s;outline:none;}
+.fi:focus,.fsel:focus,.fta:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(30,127,255,0.15);}
+.fta{resize:none;height:70px;}
+.fsel option{background:var(--surface);}
+.sev-slider{width:100%;-webkit-appearance:none;appearance:none;height:8px;border-radius:4px;outline:none;background:linear-gradient(to right,var(--green),var(--orange),var(--red));cursor:pointer;}
+.sev-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#fff;cursor:pointer;border:3px solid var(--blue);box-shadow:0 2px 8px rgba(0,0,0,0.4);}
+.sev-disp{font-family:var(--font-d);font-size:1.5rem;font-weight:800;transition:color 0.3s;}
+.sev-row{display:flex;justify-content:space-between;font-size:0.62rem;color:var(--text-dim);margin-top:4px;}
+.submit-big{width:100%;background:linear-gradient(135deg,var(--blue),#0055cc);color:#fff;border:none;padding:14px;border-radius:12px;cursor:pointer;font-family:var(--font-d);font-weight:700;font-size:1rem;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px;}
+.submit-big:hover{transform:translateY(-1px);box-shadow:0 0 30px rgba(30,127,255,0.3);}
+
+/* Result side */
+.tresult{overflow-y:auto;background:var(--surface2);}
+.tresult::-webkit-scrollbar{width:4px;} .tresult::-webkit-scrollbar-thumb{background:var(--border);}
+.placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-dim);gap:12px;padding:40px;text-align:center;}
+.ph-icon{font-size:3.2rem;}
+.ph-txt{font-size:0.85rem;line-height:1.6;}
+.result-body{padding:28px;}
+.dc{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
+.dc-hdr{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.dc-icon{font-size:1rem;}
+.dc-title{font-family:var(--font-d);font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);}
+.dc-body{font-size:0.78rem;color:var(--text-dim);line-height:1.6;}
+.prio-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 18px;border-radius:24px;font-family:var(--font-d);font-size:0.9rem;font-weight:800;margin-bottom:10px;}
+.prio-Critical{background:var(--red-dim);color:var(--red);border:2px solid var(--red);}
+.prio-Moderate{background:var(--orange-dim);color:var(--orange);border:2px solid var(--orange);}
+.prio-Mild{background:var(--green-dim);color:var(--green);border:2px solid var(--green);}
+.mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;}
+.mini-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
+.mini-card{background:var(--surface2);border-radius:8px;padding:8px;text-align:center;font-size:0.7rem;}
+.mini-val{font-weight:700;font-size:0.88rem;margin-bottom:2px;}
+.mini-lbl{color:var(--text-dim);}
+.action-btn-g{width:100%;padding:8px;background:var(--green-dim);border:1px solid var(--green);color:var(--green);border-radius:8px;cursor:pointer;font-family:var(--font-d);font-size:0.72rem;font-weight:700;margin-top:10px;transition:all 0.2s;}
+.action-btn-g:hover{background:var(--green);color:#000;}
+.action-btn-b{width:100%;padding:8px;background:var(--blue-dim);border:1px solid var(--blue);color:var(--blue);border-radius:8px;cursor:pointer;font-family:var(--font-d);font-size:0.72rem;font-weight:700;margin-top:8px;transition:all 0.2s;}
+.action-btn-b:hover{background:var(--blue);color:#fff;}
+
+/* ── Toast ── */
+#toast-c{position:fixed;top:64px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:7px;}
+.toast{background:var(--surface);border-radius:10px;padding:11px 15px;min-width:260px;max-width:320px;border-left:4px solid var(--blue);animation:si 0.3s ease;box-shadow:0 8px 28px rgba(0,0,0,0.45);}
+.toast.critical{border-left-color:var(--red);} .toast.warning{border-left-color:var(--orange);}
+.toast-t{font-family:var(--font-d);font-size:0.75rem;font-weight:700;margin-bottom:2px;}
+.toast-b{font-size:0.7rem;color:var(--text-dim);}
+@keyframes si{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes so{from{opacity:1}to{transform:translateX(110%);opacity:0}}
+.toast.out{animation:so 0.3s ease forwards;}
+.spinner{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── FEATURE 1: Enhanced hospital panel metrics ── */
+.hosp-metric-row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px;}
+.hosp-metric-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 6px;text-align:center;}
+.hmc-val{font-family:var(--font-d);font-size:1rem;font-weight:800;}
+.hmc-lbl{font-size:0.58rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;}
+.top-doc-banner{background:linear-gradient(135deg,rgba(30,127,255,0.12),rgba(0,214,143,0.08));border:1px solid var(--blue);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;}
+.top-doc-crown{font-size:1.1rem;}
+.top-doc-info{flex:1;min-width:0;}
+.top-doc-name{font-size:0.8rem;font-weight:700;color:var(--blue);}
+.top-doc-spec{font-size:0.65rem;color:var(--text-dim);}
+.sat-bar{height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;margin-top:4px;}
+.sat-fill{height:100%;border-radius:3px;background:var(--green);transition:width 0.6s;}
+
+/* ── FEATURE 3: Ambulance monitoring in hospital panel ── */
+.amb-monitor{margin-top:10px;}
+.amb-monitor-title{font-family:var(--font-d);font-size:0.63rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;}
+.amb-mini{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:5px;}
+.amb-mini-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.amb-mini-id{font-family:var(--font-m);font-size:0.72rem;font-weight:600;color:var(--blue);}
+.amb-mini-status{font-size:0.6rem;font-weight:700;padding:2px 7px;border-radius:8px;margin-left:auto;}
+
+/* ── FEATURE 5: AI Confidence score ── */
+.conf-bar-wrap{margin:8px 0;}
+.conf-label{display:flex;justify-content:space-between;align-items:center;font-size:0.68rem;margin-bottom:4px;}
+.conf-pct{font-family:var(--font-d);font-weight:800;font-size:0.88rem;}
+.conf-bar{height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;}
+.conf-fill{height:100%;border-radius:3px;transition:width 0.7s;}
+
+/* ── FEATURE 6: Bed reservation status ── */
+.bed-reserved{display:flex;align-items:center;gap:10px;background:rgba(0,214,143,0.1);border:1px solid var(--green);border-radius:10px;padding:10px 14px;margin:8px 0;}
+.bed-reserved-icon{font-size:1.3rem;}
+.bed-reserved-title{font-family:var(--font-d);font-size:0.78rem;font-weight:700;color:var(--green);}
+.bed-reserved-sub{font-size:0.65rem;color:var(--text-dim);}
+.bed-pending{border-color:var(--orange);background:rgba(255,149,0,0.08);}
+.bed-pending .bed-reserved-title{color:var(--orange);}
+
+/* ── FEATURE 7: Rerouting alert ── */
+.reroute-alert{background:rgba(255,59,59,0.1);border:1px solid var(--red);border-radius:10px;padding:10px 14px;margin-bottom:8px;animation:pulse-reroute 1.5s ease-in-out infinite;}
+@keyframes pulse-reroute{0%,100%{opacity:1}50%{opacity:0.7}}
+.reroute-title{font-family:var(--font-d);font-size:0.75rem;font-weight:700;color:var(--red);margin-bottom:3px;}
+.reroute-body{font-size:0.7rem;color:var(--text-dim);}
+
+/* ── FEATURE 8: Analytics panel in left sidebar ── */
+.analytics-strip{padding:8px;border-bottom:1px solid var(--border);}
+.analytics-title{font-family:var(--font-d);font-size:0.63rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:6px;}
+.analytics-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;}
+.an-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 5px;text-align:center;}
+.an-val{font-family:var(--font-d);font-size:1rem;font-weight:800;}
+.an-lbl{font-size:0.55rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.6px;margin-top:1px;}
+
+/* ── FEATURE 2+8: Triage patient records inline in triage page ── */
+.triage-body-3col{display:grid;grid-template-columns:1fr 1fr 280px;flex:1;overflow:hidden;}
+.triage-records-col{background:var(--bg);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.triage-rec-header{padding:12px 14px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.triage-rec-title{font-family:var(--font-d);font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);display:flex;align-items:center;justify-content:space-between;}
+.triage-rec-count{background:var(--red-dim);color:var(--red);border:1px solid var(--red);border-radius:10px;padding:1px 7px;font-size:0.6rem;}
+.triage-rec-list{overflow-y:auto;flex:1;padding:8px;}
+.triage-rec-list::-webkit-scrollbar{width:3px;} .triage-rec-list::-webkit-scrollbar-thumb{background:var(--border);}
+.trec{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:7px;cursor:pointer;transition:border-color 0.2s;}
+.trec:hover{border-color:var(--blue);}
+.trec-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+.trec-name{font-size:0.78rem;font-weight:700;}
+.trec-time{font-size:0.58rem;color:var(--text-dim);font-family:var(--font-m);}
+.trec-sym{font-size:0.65rem;color:var(--text-dim);margin-bottom:3px;}
+.trec-meta{display:flex;gap:6px;align-items:center;}
+.trec-sev{font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:6px;}
+
+/* ── FEATURE 4: AI Auto-summary ── */
+.ai-summary-box{background:rgba(30,127,255,0.08);border:1px solid rgba(30,127,255,0.3);border-radius:10px;padding:12px 14px;margin-bottom:14px;}
+.ai-summary-label{font-family:var(--font-d);font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.ai-summary-text{font-size:0.82rem;color:var(--text);line-height:1.6;}
+
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">
+    <img src="{{ url_for('static', filename='assets/logo.png') }}" alt="VitaCare" onerror="this.style.display='none'">
+    <div class="logo-text"><span class="v">Vita</span><span class="c">Care</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    <div class="topbar-time" id="clock">--:--:--</div>
+  </div>
+  <div class="topbar-right">
+    <!-- FIX 4: Triage is its own page -->
+    <button class="btn-triage" onclick="openTriage()">🚑 Triage Patient</button>
+    <!-- FIX 1: Mobile uses dynamic hostname so it works on phones on same WiFi -->
+    <button class="btn-ghost" onclick="openMobile()">📱 Mobile View</button>
+    <!-- FIX 2: Real emergency call -->
+    <button class="btn-emergency" onclick="callDispatch()">🚨 Emergency Call</button>
+  </div>
+</div>
+
+<!-- 3-COLUMN MAIN -->
+<div class="main">
+
+  <!-- LEFT: Stats + Hospitals -->
+  <div class="left-panel">
+    <div class="ph"><div class="pt">System Overview</div></div>
+    <div class="pscroll">
+      <div class="stats-row">
+        <div class="sc blue"><div class="sv" id="stat-beds">--</div><div class="sl">Beds Free</div></div>
+        <div class="sc red"><div class="sv" id="stat-crit">--</div><div class="sl">Critical</div></div>
+        <div class="sc green"><div class="sv" id="stat-icu">--</div><div class="sl">ICU Free</div></div>
+        <div class="sc orange"><div class="sv" id="stat-ambs">--</div><div class="sl">Ambulances</div></div>
+      </div>
+      <div class="analytics-strip">
+        <div class="analytics-title">Today's Activity</div>
+        <div class="analytics-row">
+          <div class="an-card"><div class="an-val" id="an-total" style="color:var(--blue)">0</div><div class="an-lbl">Cases</div></div>
+          <div class="an-card"><div class="an-val" id="an-crit" style="color:var(--red)">0</div><div class="an-lbl">Critical</div></div>
+          <div class="an-card"><div class="an-val" id="an-avg" style="color:var(--green)">—</div><div class="an-lbl">Avg ETA</div></div>
+        </div>
+      </div>
+      <div class="ph" style="padding-top:6px"><div class="pt">Hospitals</div></div>
+      <div id="hosp-list"></div>
+    </div>
+  </div>
+
+  <!-- CENTER: Map + FIX 5: Legend bar outside map + Alert ticker -->
+  <div class="center">
+    <div class="map-wrap"><div id="map"></div></div>
+
+    <!-- FIX 5: Legend is in its own bar BELOW the map, not on top of it -->
+    <div class="legend-bar">
+      <span class="legend-lbl">Map Legend</span>
+      <div class="leg-item"><div class="leg-dot" style="background:#00D68F"></div>Available</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#FF9500"></div>Limited</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#FF3B3B"></div>Full</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#1E7FFF"></div>Ambulance</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#fff;border:2px solid #FF3B3B"></div>Patient</div>
+    </div>
+
+    <div class="alert-bar">
+      <div class="alert-scroll" id="alert-scroll">
+        <div class="ai info">⏳ Loading alerts...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Tabs -->
+  <div class="right-panel">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('hospital')">🏥 Hospital</div>
+      <div class="tab" onclick="switchTab('ambulance')">🚑 Ambs</div>
+      <div class="tab" onclick="switchTab('patients')">👤 Patients</div>
+      <div class="tab" onclick="switchTab('predict')">📈 AI</div>
+    </div>
+
+    <div class="tc active" id="tc-hospital">
+      <div class="pb" id="hosp-detail">
+        <div style="text-align:center;padding:50px 16px;color:var(--text-dim);font-size:0.82rem">👈 Click a hospital to view its resources</div>
+      </div>
+    </div>
+
+    <div class="tc" id="tc-ambulance">
+      <div style="overflow-y:auto;flex:1" id="amb-list"></div>
+    </div>
+
+    <div class="tc" id="tc-patients">
+      <div style="overflow-y:auto;flex:1" id="pat-list">
+        <div style="text-align:center;padding:40px;color:var(--text-dim);font-size:0.82rem">No patients yet — click Triage Patient to register</div>
+      </div>
+    </div>
+
+    <div class="tc" id="tc-predict">
+      <div class="pb">
+        <div style="font-family:var(--font-d);font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:8px">6-Hour Demand Forecast</div>
+        <div class="pred-wrap"><canvas id="predChart"></canvas></div>
+        <div style="font-family:var(--font-d);font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:8px">Resource Risk</div>
+        <div id="risk-grid"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════
+     FIX 4: TRIAGE — SEPARATE FULL PAGE
+     ═══════════════════════════════════ -->
+<div id="triage-page">
+  <div class="triage-bar">
+    <div class="triage-bar-title">🚑 Patient Triage &amp; AI Emergency Processing</div>
+    <div class="triage-bar-right">
+      <button id="reset-btn" onclick="resetTriage()" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.78rem;">← New Patient</button>
+      <button onclick="closeTriage()" style="background:var(--red-dim);border:1px solid var(--red);color:var(--red);padding:6px 16px;border-radius:8px;cursor:pointer;font-family:var(--font-d);font-weight:700;font-size:0.78rem;">✕ Close</button>
+    </div>
+  </div>
+
+  <div class="triage-body triage-body-3col">
+    <!-- LEFT: Patient Form -->
+    <div class="tform">
+      <div class="fsec">Patient Information</div>
+
+      <div class="fg">
+        <label class="fl">Patient Name</label>
+        <input class="fi" id="f-name" placeholder="Full name" type="text">
+      </div>
+      <div class="frow">
+        <div class="fg">
+          <label class="fl">Age</label>
+          <input class="fi" id="f-age" type="number" value="35" min="1" max="120">
+        </div>
+        <div class="fg">
+          <label class="fl">Blood Group</label>
+          <select class="fsel" id="f-blood">
+            <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+            <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl">Symptoms</label>
+        <textarea class="fta" id="f-symptoms" placeholder="Describe symptoms (e.g. chest pain, difficulty breathing, severe bleeding)..."></textarea>
+      </div>
+      <div class="fg">
+        <label class="fl">Medical History</label>
+        <textarea class="fta" id="f-history" placeholder="Existing conditions, medications, allergies..."></textarea>
+      </div>
+      <div class="fg">
+        <label class="fl">Severity &nbsp; <span class="sev-disp" id="sev-val" style="color:var(--orange)">5</span> / 10</label>
+        <input type="range" min="1" max="10" value="5" class="sev-slider" id="f-sev" oninput="onSev(this.value)">
+        <div class="sev-row"><span style="color:var(--green)">Mild</span><span>Moderate</span><span style="color:var(--red)">Critical</span></div>
+      </div>
+
+      <button class="submit-big" onclick="submitTriage()">
+        <span id="triage-btn">⚡ Process Emergency with AI</span>
+      </button>
+    </div>
+
+    <!-- RIGHT: AI Result -->
+    <div class="tresult" id="tresult">
+      <div class="placeholder" id="ai-placeholder">
+        <div class="ph-icon">🧠</div>
+        <div class="ph-txt">Fill patient details and press<br><strong>Process Emergency</strong><br><br>AI will assign priority, hospital &amp; ambulance<br>with a full explanation.</div>
+      </div>
+      <div id="ai-result" style="display:none"></div>
+    </div>
+
+    <!-- FEATURE 2: Persistent Patient Records Column -->
+    <div class="triage-records-col">
+      <div class="triage-rec-header">
+        <div class="triage-rec-title">
+          Patient Records
+          <span class="triage-rec-count" id="trec-count">0</span>
+        </div>
+      </div>
+      <div class="triage-rec-list" id="trec-list">
+        <div style="text-align:center;padding:30px 10px;color:var(--text-dim);font-size:0.75rem">No records yet.<br>Submit a triage to start.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast-c"></div>
+
+<script>
+// ═══════════════════════════════════
+// FIX 3: Buzzer using Web Audio API
+// ═══════════════════════════════════
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function buzz(type) {
+  try {
+    const ctx = getAudio();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    const t = ctx.currentTime;
+    if (type === 'critical') {
+      osc.frequency.setValueAtTime(900, t);
+      osc.frequency.setValueAtTime(650, t+0.14);
+      osc.frequency.setValueAtTime(900, t+0.28);
+      gain.gain.setValueAtTime(0.45, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t+0.52);
+      osc.start(t); osc.stop(t+0.52);
+    } else if (type === 'warning') {
+      osc.frequency.setValueAtTime(520, t);
+      gain.gain.setValueAtTime(0.25, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t+0.28);
+      osc.start(t); osc.stop(t+0.28);
+    } else {
+      osc.frequency.setValueAtTime(360, t);
+      gain.gain.setValueAtTime(0.1, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t+0.14);
+      osc.start(t); osc.stop(t+0.14);
+    }
+  } catch(e) {}
+}
+function unlockAudio() { try { getAudio(); } catch(e) {} }
+
+// ── State ──
+const socket = io();
+let hosps = {}, ambsData = [], map, hMarkers = {}, aMarkers = {}, selHosp = null, predChart = null, lastAlertCount = 0;
+
+// ── Clock ──
+setInterval(() => { document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-IN'); }, 1000);
+document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-IN');
+
+// ── Socket ──
+socket.on('connect', () => { toast('info','✅ Connected','Real-time sync active'); socket.emit('request_update'); });
+socket.on('hospitals_update', d => { d.forEach(h => hosps[h.id]=h); renderHospList(); updateHMarkers(); });
+socket.on('ambulances_update', d => {
+  ambsData=d; renderAmbs(d); updateAMarkers(d);
+  // Feature 3: Refresh ambulance monitor in currently selected hospital panel
+  if (selHosp) {
+    const el=document.getElementById('amb-monitor-'+selHosp);
+    if (el) {
+      const nearbyAmbs=ambsData.filter(a=>a.destination===selHosp||a.status==='Available');
+      el.innerHTML=nearbyAmbs.slice(0,4).map(a=>{
+        const dotColor=a.status==='Available'?'#00D68F':a.status==='En Route'?'#1E7FFF':'#FF9500';
+        const chipClass=a.status==='En Route'?'amb-EnRoute':a.status==='Available'?'amb-Available':'amb-Busy';
+        return `<div class="amb-mini"><div class="amb-mini-dot" style="background:${dotColor}"></div><div class="amb-mini-id">${a.call_sign}</div><div style="font-size:0.65rem;color:var(--text-dim);flex:1;padding-left:6px">${a.driver}</div><div class="amb-mini-status ${chipClass}">${a.status}</div></div>`;
+      }).join('')||'<div style="font-size:0.7rem;color:var(--text-dim)">No ambulances</div>';
+    }
+    // Feature 7: Check if hospital became full and show reroute alert
+    const h=hosps[selHosp];
+    if(h&&h.available_beds===0){
+      const ra=document.getElementById('reroute-alert-'+selHosp);
+      if(ra){ra.style.display='block';document.getElementById('reroute-msg-'+selHosp).textContent=h.name+' is now full. AI will reroute next incoming patient to nearest available hospital.';}
+    }
+  }
+});
+socket.on('new_patient', p => {
+  buzz(p.priority==='Critical'?'critical':'warning');
+  toast('critical','🚑 New Patient',`${p.name} → ${hosps[p.assigned_hospital]?.name||p.assigned_hospital} [${p.priority}]`);
+  loadPatients();
+});
+socket.on('system_alert', a => { buzz(a.type); toast(a.type,'⚠ Alert',a.message); });
+
+// ── Map ──
+function initMap() {
+  map = L.map('map',{zoomControl:true}).setView([12.9352,77.6245],11);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© CartoDB',maxZoom:19}).addTo(map);
+}
+
+function hColor(status){ return status==='Available'?'#00D68F':status==='Limited'?'#FF9500':'#FF3B3B'; }
+
+function updateHMarkers() {
+  const allLatLngs = [];
+  Object.values(hosps).forEach(h => {
+    allLatLngs.push([h.lat, h.lng]);
+    const c=hColor(h.status);
+    const ico = L.divIcon({className:'',html:`<div style="background:${c};width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.85);box-shadow:0 0 10px ${c}55"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
+    const pop = `<div style="font-family:sans-serif;font-size:12px;min-width:170px"><b>${h.name}</b><br>Status: <b style="color:${c}">${h.status}</b><br>Beds: ${h.available_beds}/${h.total_beds} | ICU: ${h.icu_available}<br>Wait: ${h.avg_wait_time}m | O₂: ${h.oxygen_level}%<br><small style="color:#777">📞 ${h.phone}</small></div>`;
+    if (hMarkers[h.id]) { hMarkers[h.id].setIcon(ico).setPopupContent(pop); }
+    else {
+      const m = L.marker([h.lat,h.lng],{icon:ico}).addTo(map);
+      m.bindPopup(pop); m.on('click',()=>{ showHospDetail(h.id); switchTab('hospital'); }); hMarkers[h.id]=m;
+    }
+  });
+  // Fit map to show ALL hospitals on first load
+  if (allLatLngs.length > 0 && !window._mapFitted) {
+    setTimeout(() => {
+      try { map.fitBounds(allLatLngs, {padding:[50,50]}); window._mapFitted=true; } catch(e){}
+    }, 200);
+  }
+}
+
+function updateAMarkers(ambs) {
+  ambs.forEach(a => {
+    const c=a.status==='Available'?'#00D68F':a.status==='En Route'?'#1E7FFF':'#FF9500';
+    const ico=L.divIcon({className:'',html:`<div style="background:${c};width:10px;height:10px;border-radius:50%;border:2px solid rgba(255,255,255,0.9);box-shadow:0 0 7px ${c}77"></div>`,iconSize:[10,10],iconAnchor:[5,5]});
+    if (aMarkers[a.id]) { aMarkers[a.id].setIcon(ico); }
+    else { const m=L.marker([a.lat,a.lng],{icon:ico}).addTo(map); m.bindPopup(`<b>${a.call_sign}</b><br>${a.status}<br>👤 ${a.driver}`); aMarkers[a.id]=m; }
+  });
+}
+
+// ── Load all ──
+async function loadAll() {
+  const [hd,st,al,am,pr,pa] = await Promise.all([
+    fetch('/api/hospitals').then(r=>r.json()),
+    fetch('/api/stats').then(r=>r.json()),
+    fetch('/api/alerts').then(r=>r.json()),
+    fetch('/api/ambulances').then(r=>r.json()),
+    fetch('/api/predictions').then(r=>r.json()),
+    fetch('/api/patients').then(r=>r.json())
+  ]);
+  hd.forEach(h=>hosps[h.id]=h); ambsData=am;
+  renderHospList(); updateHMarkers(); updateAMarkers(am);
+  updateStats(st); renderAlerts(al); renderAmbs(am); renderPreds(pr); renderPats(pa);
+}
+
+function updateStats(s) {
+  document.getElementById('stat-beds').textContent=s.available_beds;
+  document.getElementById('stat-crit').textContent=s.critical_patients;
+  document.getElementById('stat-icu').textContent=s.available_icu;
+  document.getElementById('stat-ambs').textContent=`${s.active_ambulances}/${s.total_ambulances}`;
+}
+
+// ── Hospital list ──
+function renderHospList() {
+  document.getElementById('hosp-list').innerHTML = Object.values(hosps).map(h=>`
+    <div class="hosp-item ${selHosp===h.id?'sel':''}" onclick="showHospDetail('${h.id}')">
+      <div class="hh"><div class="hn">${h.name}</div><div class="chip chip-${h.status}">${h.status}</div></div>
+      <div class="hm">
+        <div class="hmet">🛏 <strong>${h.available_beds}</strong>/${h.total_beds}</div>
+        <div class="hmet">ICU <strong>${h.icu_available}</strong></div>
+        <div class="hmet">⏱ <strong>${h.avg_wait_time}m</strong></div>
+      </div>
+    </div>`).join('');
+}
+
+// ── Hospital detail ──
+function showHospDetail(id) {
+  selHosp=id; renderHospList(); switchTab('hospital');
+  const h=hosps[id]; if(!h) return;
+
+  // Feature 1: Compute derived metrics
+  const successRate = Math.round(88 + (h.rating||4)*2);
+  const satScore = Math.round((h.rating||4)/5*100);
+  const topDoc = (h.top_doctors||[])[0];
+  const topDocBanner = topDoc ? `
+    <div class="top-doc-banner">
+      <div class="top-doc-crown">👑</div>
+      <div class="top-doc-info">
+        <div class="top-doc-name">${topDoc.name}</div>
+        <div class="top-doc-spec">${topDoc.specialty} · ${topDoc.experience}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+          <div class="sat-bar" style="flex:1"><div class="sat-fill" style="width:${topDoc.rating/5*100}%"></div></div>
+          <div style="font-size:0.62rem;color:var(--green)">★ ${topDoc.rating}</div>
+        </div>
+      </div>
+    </div>` : '';
+
+  // Feature 6: Bed reservation status
+  const bedReservedHtml = h.available_beds > 0 ? (h.icu_available > 0 ?
+    `<div class="bed-reserved"><div class="bed-reserved-icon">✅</div><div><div class="bed-reserved-title">ICU Bed Available</div><div class="bed-reserved-sub">${h.icu_available} ICU beds ready for reservation</div></div></div>` :
+    `<div class="bed-reserved"><div class="bed-reserved-icon">✅</div><div><div class="bed-reserved-title">General Bed Available</div><div class="bed-reserved-sub">${h.available_beds} general beds ready</div></div></div>`) :
+    `<div class="bed-reserved bed-pending"><div class="bed-reserved-icon">⚠️</div><div><div class="bed-reserved-title">No Beds Available</div><div class="bed-reserved-sub">Hospital at full capacity</div></div></div>`;
+
+  // Feature 3: Ambulance monitor for this hospital's area
+  const nearbyAmbs = ambsData.filter(a => a.destination===id || a.status==='Available');
+  const ambMonitorHtml = nearbyAmbs.slice(0,4).map(a => {
+    const dotColor = a.status==='Available'?'#00D68F':a.status==='En Route'?'#1E7FFF':'#FF9500';
+    const chipClass = a.status==='En Route'?'amb-EnRoute':a.status==='Available'?'amb-Available':'amb-Busy';
+    return `<div class="amb-mini">
+      <div class="amb-mini-dot" style="background:${dotColor}"></div>
+      <div class="amb-mini-id">${a.call_sign}</div>
+      <div style="font-size:0.65rem;color:var(--text-dim);flex:1;padding-left:6px">${a.driver}</div>
+      <div class="amb-mini-status ${chipClass}">${a.status}</div>
+    </div>`;
+  }).join('') || '<div style="font-size:0.7rem;color:var(--text-dim)">No ambulances assigned</div>';
+
+  const depts=Object.entries(h.departments||{}).map(([n,d])=>{
+    const pct=Math.round(d.current/d.capacity*100);
+    const fc=pct>90?'var(--red)':pct>70?'var(--orange)':'var(--green)';
+    return `<div class="dept-item"><span style="color:var(--text-dim)">${n}</span><div style="flex:1;margin:0 10px"><div class="pbar"><div class="pfill" style="width:${pct}%;background:${fc}"></div></div></div><span style="font-size:0.72rem;font-weight:600">${d.current}/${d.capacity}</span></div>`;
+  }).join('');
+
+  const bp=Math.round((h.total_beds-h.available_beds)/h.total_beds*100);
+  const ip=h.icu_total>0?Math.round((h.icu_total-h.icu_available)/h.icu_total*100):0;
+
+  // Doctors HTML
+  const docs=(h.top_doctors||[]).map(d=>`
+    <div class="doc-card">
+      <div class="doc-avatar">${initials(d.name)}</div>
+      <div style="flex:1;min-width:0">
+        <div class="doc-name">${d.name}</div>
+        <div class="doc-spec">${d.specialty}</div>
+        <div class="doc-meta">${d.experience} experience</div>
+      </div>
+      <div class="doc-star">
+        <div style="color:#F5A623;font-size:0.8rem">★ ${d.rating}</div>
+        <div style="font-size:0.6rem;color:var(--text-dim);margin-top:2px">Rating</div>
+      </div>
+    </div>`).join('');
+
+  // Reviews HTML
+  const revs=(h.reviews||[]).map(r=>`
+    <div class="rev-card">
+      <div class="rev-header">
+        <div>
+          <div class="rev-author">${r.author}</div>
+          <div class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</div>
+        </div>
+        <div class="rev-date">${r.date}</div>
+      </div>
+      <div class="rev-text">"${r.text}"</div>
+    </div>`).join('');
+
+  // Rating bar
+  const rat = h.rating || 0;
+  const ratStars = '★'.repeat(Math.floor(rat)) + (rat%1>=0.5?'½':'') + '☆'.repeat(5-Math.ceil(rat));
+
+  document.getElementById('hosp-detail').innerHTML=`
+    <div style="margin-bottom:10px">
+      <div style="font-family:var(--font-d);font-size:0.93rem;font-weight:800">${h.name}</div>
+      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:2px">${h.address}</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <div class="chip chip-${h.status}">${h.status}</div>
+        <div class="stars" style="font-size:0.7rem">${ratStars}</div>
+        <div class="rating-num" style="font-size:0.85rem">${rat}</div>
+        <div class="rating-cnt">(${(h.total_reviews||0).toLocaleString()} reviews)</div>
+      </div>
+    </div>
+
+    <div class="info-row">
+      <div class="info-pill">Est. <span>${h.established||'—'}</span></div>
+      <div class="info-pill"><span>${h.accreditation||'—'}</span></div>
+      <div class="info-pill">Response <span>${h.emergency_response||'—'}</span></div>
+    </div>
+
+    <div class="htabs">
+      <div class="htab ha" id="ht-${id}-resources" onclick="hTab('${id}','resources')">Resources</div>
+      <div class="htab" id="ht-${id}-doctors" onclick="hTab('${id}','doctors')">Doctors</div>
+      <div class="htab" id="ht-${id}-reviews" onclick="hTab('${id}','reviews')">Reviews</div>
+    </div>
+
+    <!-- RESOURCES TAB -->
+    <div class="hpanel ha" id="hp-${id}-resources">
+
+      <!-- Feature 6: Bed reservation status -->
+      ${bedReservedHtml}
+
+      <!-- Feature 7: Rerouting alert if any -->
+      <div id="reroute-alert-${id}" style="display:none" class="reroute-alert">
+        <div class="reroute-title">🔄 Rerouting Required</div>
+        <div class="reroute-body" id="reroute-msg-${id}">Checking availability...</div>
+      </div>
+
+      <!-- Feature 1: Key metrics row -->
+      <div class="hosp-metric-row">
+        <div class="hosp-metric-card"><div class="hmc-val" style="color:var(--green)">${successRate}%</div><div class="hmc-lbl">Success Rate</div></div>
+        <div class="hosp-metric-card"><div class="hmc-val" style="color:var(--orange)">${h.avg_wait_time}m</div><div class="hmc-lbl">Avg Treatment</div></div>
+        <div class="hosp-metric-card"><div class="hmc-val" style="color:var(--blue)">${satScore}%</div><div class="hmc-lbl">Satisfaction</div></div>
+      </div>
+
+      <!-- Feature 1: Top doctor banner -->
+      ${topDocBanner}
+
+      <div class="rrow">
+        <div class="rc"><div class="rv" style="color:var(--blue)">${h.available_beds}<span style="font-size:0.62rem;color:var(--text-dim)">/${h.total_beds}</span></div><div class="rl">Beds Free</div><div class="pbar"><div class="pfill" style="width:${bp}%;background:${bp>80?'var(--red)':'var(--blue)'}"></div></div></div>
+        <div class="rc"><div class="rv" style="color:${h.icu_available>0?'var(--green)':'var(--red)'}">${h.icu_available}<span style="font-size:0.62rem;color:var(--text-dim)">/${h.icu_total}</span></div><div class="rl">ICU Free</div><div class="pbar"><div class="pfill" style="width:${ip}%;background:${ip>85?'var(--red)':'var(--orange)'}"></div></div></div>
+        <div class="rc"><div class="rv" style="color:${h.ventilators_available>0?'var(--green)':'var(--red)'}">${h.ventilators_available}</div><div class="rl">Ventilators</div></div>
+        <div class="rc"><div class="rv" style="color:${h.oxygen_level>60?'var(--green)':'var(--red)'}">${h.oxygen_level}%</div><div class="rl">Oxygen</div><div class="pbar"><div class="pfill" style="width:${h.oxygen_level}%;background:${h.oxygen_level>60?'var(--green)':'var(--red)'}"></div></div></div>
+      </div>
+      <div style="font-family:var(--font-d);font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px">Departments</div>
+      ${depts}
+
+      <!-- Feature 3: Live ambulance monitoring -->
+      <div class="amb-monitor">
+        <div class="amb-monitor-title">Live Ambulances</div>
+        <div id="amb-monitor-${id}">${ambMonitorHtml}</div>
+      </div>
+    </div>
+
+    <!-- DOCTORS TAB -->
+    <div class="hpanel" id="hp-${id}-doctors">
+      <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:10px">Top specialists on staff</div>
+      ${docs || '<div style="color:var(--text-dim);font-size:0.78rem">No doctor data available</div>'}
+    </div>
+
+    <!-- REVIEWS TAB -->
+    <div class="hpanel" id="hp-${id}-reviews">
+      <div style="display:flex;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="text-align:center">
+          <div style="font-family:var(--font-d);font-size:2rem;font-weight:800;color:var(--text)">${rat}</div>
+          <div class="stars" style="font-size:1rem">${ratStars}</div>
+          <div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px">${(h.total_reviews||0).toLocaleString()} reviews</div>
+        </div>
+        <div style="flex:1;font-size:0.72rem;color:var(--text-dim);line-height:1.6;border-left:1px solid var(--border);padding-left:12px">
+          Patient-verified reviews collected from hospital records and public submissions.
+        </div>
+      </div>
+      ${revs || '<div style="color:var(--text-dim);font-size:0.78rem">No reviews yet</div>'}
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button onclick="callHosp('${h.phone}','${h.name}')" style="flex:1;padding:8px;background:var(--green-dim);border:1px solid var(--green);color:var(--green);border-radius:8px;cursor:pointer;font-family:var(--font-d);font-size:0.72rem;font-weight:700;transition:all 0.2s">📞 Call Hospital</button>
+      <button onclick="zoomTo('${id}')" style="flex:1;padding:8px;background:var(--blue-dim);border:1px solid var(--blue);color:var(--blue);border-radius:8px;cursor:pointer;font-family:var(--font-d);font-size:0.72rem;font-weight:700;transition:all 0.2s">🗺 View on Map</button>
+    </div>
+  `;
+  map.setView([h.lat,h.lng],14); if(hMarkers[id]) hMarkers[id].openPopup();
+}
+
+function zoomTo(id) { const h=hosps[id]; if(!h) return; map.setView([h.lat,h.lng],15); if(hMarkers[id]) hMarkers[id].openPopup(); }
+
+// FIXED: Show call modal (works on desktop + mobile)
+function callHosp(phone, name) {
+  unlockAudio();
+  showCallModal(name, phone, 'hospital');
+}
+
+// ── Alerts (FIX 3: buzzer on new alerts) ──
+function renderAlerts(alerts) {
+  const crit = alerts.filter(a=>a.type==='critical').length;
+  if (crit > lastAlertCount) buzz('critical');
+  else if (alerts.length > lastAlertCount) buzz('warning');
+  lastAlertCount = alerts.length;
+  const items = [...alerts,...alerts];
+  document.getElementById('alert-scroll').innerHTML = items.map(a=>`<div class="ai ${a.type}">${a.type==='critical'?'🔴':'⚠️'} ${a.message}</div>`).join('');
+}
+
+// ── Ambulances (FIX 2: priority badge + real call) ──
+function renderAmbs(ambs) {
+  document.getElementById('amb-list').innerHTML = ambs.map(a => {
+    const sk = a.status.replace(' ','');
+    const prio = a.patient ? (a.status==='En Route'?'Critical':'Moderate') : 'None';
+    const vitals = a.heart_rate ? `<div style="display:flex;gap:10px;margin-top:3px"><span style="font-size:0.67rem">❤️ ${a.heart_rate}bpm</span><span style="font-size:0.67rem">🫁 ${a.oxygen_level}%</span></div>` : '';
+    return `<div class="amb-item">
+      <div class="amb-hdr">
+        <div class="amb-cs">${a.call_sign}</div>
+        <div class="amb-chip amb-${sk}">${a.status}</div>
+      </div>
+      <div class="prio-row">
+        <span style="font-size:0.62rem;color:var(--text-dim)">Priority:</span>
+        <span class="pbadge pbadge-${prio}">${prio==='None'?'No Patient':prio}</span>
+        ${a.vitals_monitor?'<span style="font-size:0.6rem;color:var(--blue)">📡 Vitals</span>':''}
+      </div>
+      <div class="amb-det">👤 ${a.driver}${a.patient?`<br>🏥 <strong>${a.patient}</strong>`:''}${a.destination?` → ${a.destination} | ⏱ ${a.eta}`:''} ${vitals}</div>
+      ${a.driver_phone?`<button class="call-btn" onclick="callDriver('${a.driver_phone}','${a.driver}')">📞 Call ${a.driver}</button>`:''}
+    </div>`;
+  }).join('');
+}
+
+// FIXED: Show call modal (works on desktop + mobile)
+function callDriver(phone, name) {
+  unlockAudio();
+  showCallModal(name, phone, 'ambulance');
+}
+
+// ── Patients ──
+function renderPats(pats) {
+  const el = document.getElementById('pat-list');
+  if (!pats||!pats.length) { el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-dim);font-size:0.82rem">No patients yet</div>'; return; }
+  el.innerHTML=pats.map(p=>{
+    const c=p.priority==='Critical'?'var(--red)':p.priority==='Moderate'?'var(--orange)':'var(--green)';
+    return `<div class="pat-item">
+      <div class="pat-hdr"><div class="pat-name">${p.name}</div><span class="pbadge pbadge-${p.priority}" style="font-size:0.6rem">${p.priority}</span></div>
+      <div class="pat-meta">${(p.symptoms||'').substring(0,48)}... | ${p.blood_group} | Age ${p.age}</div>
+      <div class="pat-meta" style="margin-top:2px">🏥 ${hosps[p.assigned_hospital]?.name||p.assigned_hospital} | <span style="color:var(--blue)">${p.status}</span></div>
+    </div>`;
+  }).join('');
+}
+async function loadPatients() { const p=await fetch('/api/patients').then(r=>r.json()); renderPats(p); const s=await fetch('/api/stats').then(r=>r.json()); updateStats(s); }
+
+// ── Predictions ──
+function renderPreds(data) {
+  if (predChart) predChart.destroy();
+  predChart=new Chart(document.getElementById('predChart').getContext('2d'),{type:'bar',data:{labels:data.forecast.map(f=>f.hour),datasets:[{label:'Patients',data:data.forecast.map(f=>f.expected_patients),backgroundColor:'rgba(30,127,255,0.35)',borderColor:'rgba(30,127,255,0.9)',borderWidth:1,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#7A8BA4',font:{size:10}}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#7A8BA4',font:{size:10}},beginAtZero:true}}}});
+  const rs=data.resource_status;
+  document.getElementById('risk-grid').innerHTML=`
+    <div class="risk-item"><span class="risk-lbl">ICU Capacity Risk</span><span class="risk-badge risk-${rs.icu_risk}">${rs.icu_risk}</span></div>
+    <div class="risk-item"><span class="risk-lbl">Ambulance Shortage</span><span class="risk-badge risk-${rs.ambulance_shortage_risk}">${rs.ambulance_shortage_risk}</span></div>
+    <div class="risk-item"><span class="risk-lbl">Oxygen Restock</span><span class="risk-badge risk-${rs.oxygen_restock_needed?'High':'Low'}">${rs.oxygen_restock_needed?'Yes':'No'}</span></div>`;
+}
+
+// ── Tabs ──
+function switchTab(name) {
+  const names=['hospital','ambulance','patients','predict'];
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',names[i]===name));
+  document.querySelectorAll('.tc').forEach(c=>c.classList.remove('active'));
+  document.getElementById(`tc-${name}`).classList.add('active');
+}
+
+// ── FIX 4: Triage page ──
+function openTriage() { unlockAudio(); document.getElementById('triage-page').classList.add('open'); }
+function closeTriage() { document.getElementById('triage-page').classList.remove('open'); }
+
+function onSev(v) {
+  const el=document.getElementById('sev-val');
+  el.textContent=v;
+  el.style.color=v>=8?'#FF3B3B':v>=5?'#FF9500':'#34C759';
+}
+
+// ── Feature 2+8: Patient record store ──
+let patientRecords = [];
+let analyticsData = { total:0, critical:0, etaSum:0, etaCount:0 };
+
+function savePatientRecord(name, age, blood, syms, hist, sev, data) {
+  const record = {
+    id: 'P' + String(patientRecords.length+1).padStart(4,'0'),
+    name, age, blood_group:blood, symptoms:syms, medical_history:hist,
+    severity:sev, priority:data.triage?.priority,
+    hospital: data.allocation?.hospital_name,
+    ambulance: data.routing?.call_sign,
+    eta: data.routing?.eta_minutes,
+    timestamp: new Date().toISOString(),
+    score: data.triage?.score,
+    data
+  };
+  patientRecords.unshift(record); // newest first
+  renderTriageRecords();
+  updateAnalytics(record);
+}
+
+function renderTriageRecords() {
+  const el = document.getElementById('trec-list');
+  if (!el) return;
+  document.getElementById('trec-count').textContent = patientRecords.length;
+  if (!patientRecords.length) {
+    el.innerHTML='<div style="text-align:center;padding:30px 10px;color:var(--text-dim);font-size:0.75rem">No records yet.<br>Submit a triage to start.</div>';
+    return;
+  }
+  el.innerHTML = patientRecords.map((r,i) => {
+    const pc = r.priority==='Critical'?'var(--red)':r.priority==='Moderate'?'var(--orange)':'var(--green)';
+    const ts = new Date(r.timestamp).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+    return `<div class="trec" onclick="expandRecord(${i})">
+      <div class="trec-top">
+        <div class="trec-name">${r.name}</div>
+        <div class="trec-time">${ts}</div>
+      </div>
+      <div class="trec-sym">${(r.symptoms||'').substring(0,50)}${r.symptoms?.length>50?'…':''}</div>
+      <div class="trec-meta">
+        <span class="trec-sev" style="background:${pc}22;color:${pc};border:1px solid ${pc}">${r.priority||'—'}</span>
+        <span style="font-size:0.6rem;color:var(--text-dim)">Sev ${r.severity}/10</span>
+        <span style="font-size:0.6rem;color:var(--text-dim)">Age ${r.age}</span>
+        <span style="font-size:0.6rem;color:var(--blue);margin-left:auto">${r.blood_group}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function expandRecord(i) {
+  const r = patientRecords[i];
+  if (!r) return;
+  // Show a quick summary toast with full details
+  toast('info', `📋 ${r.name}`, `${r.priority} · Sev ${r.severity} · ${r.hospital} · ETA ${r.eta}min`);
+  // Also re-show their AI result
+  if (r.data) showAIResult(r.data);
+}
+
+function updateAnalytics(record) {
+  analyticsData.total++;
+  if (record.priority==='Critical') analyticsData.critical++;
+  if (record.eta) { analyticsData.etaSum+=parseFloat(record.eta); analyticsData.etaCount++; }
+  const avgEta = analyticsData.etaCount ? Math.round(analyticsData.etaSum/analyticsData.etaCount) : 0;
+  const el1=document.getElementById('an-total');
+  const el2=document.getElementById('an-crit');
+  const el3=document.getElementById('an-avg');
+  if(el1) el1.textContent=analyticsData.total;
+  if(el2) el2.textContent=analyticsData.critical;
+  if(el3) el3.textContent=avgEta?avgEta+'m':'—';
+}
+
+async function submitTriage() {
+  const name=document.getElementById('f-name').value.trim()||'Unknown';
+  const syms=document.getElementById('f-symptoms').value.trim();
+  const sev=document.getElementById('f-sev').value;
+  const hist=document.getElementById('f-history').value;
+  const age=parseInt(document.getElementById('f-age').value)||35;
+  const blood=document.getElementById('f-blood').value;
+  if (!syms) { toast('warning','Missing','Enter symptoms first'); return; }
+  const btn=document.getElementById('triage-btn');
+  btn.innerHTML='<span class="spinner"></span>&nbsp;AI Processing...';
+  try {
+    const res=await fetch('/api/triage',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,symptoms:syms,severity:sev,medical_history:hist,age,blood_group:blood,
+        location:{lat:12.94+(Math.random()-0.5)*0.04,lng:77.60+(Math.random()-0.5)*0.04}})});
+    const data=await res.json();
+    // Attach context for feature 4 AI summary
+    data._age=age; data._symptoms=syms; data._name=name;
+    showAIResult(data);
+    // Feature 2: save record
+    savePatientRecord(name,age,blood,syms,hist,sev,data);
+    // Feature 7: check if rerouting needed
+    const hospId=data.allocation?.hospital_id;
+    if (hosps[hospId]?.available_beds===0 && data.allocation?.alternatives?.length) {
+      buzz('warning');
+      toast('warning','🔄 Rerouting','Original hospital full — patient redirected to next available');
+    }
+    document.getElementById('reset-btn').style.display='block';
+    buzz(data.triage.priority==='Critical'?'critical':'warning');
+  } catch(e) { toast('critical','Error','Server connection failed'); }
+  btn.textContent='⚡ Process Emergency with AI';
+}
+
+function showAIResult(d) {
+  const t=d.triage, al=d.allocation, ro=d.routing;
+  document.getElementById('ai-placeholder').style.display='none';
+  const el=document.getElementById('ai-result');
+  el.style.display='block';
+  const hospPhone=hosps[al.hospital_id]?.phone||'';
+  const hospData=hosps[al.hospital_id]||{};
+
+  // Feature 4: AI auto-summary
+  const gender = 'patient';
+  const ageDesc = (d._age||35) + '-year-old';
+  const symsShort = (d._symptoms||t.matched_symptoms?.join(', ')||'symptoms reported').substring(0,60);
+  const riskLevel = t.priority==='Critical'?'high-risk critical':'moderate-risk';
+  const conditionKey = (symsShort.toLowerCase().includes('chest')||symsShort.toLowerCase().includes('cardiac')) ? 'cardiac condition' :
+    (symsShort.toLowerCase().includes('head')||symsShort.toLowerCase().includes('neuro')) ? 'neurological condition' :
+    (symsShort.toLowerCase().includes('fracture')||symsShort.toLowerCase().includes('accident')) ? 'trauma injury' : 'medical emergency';
+  const autoSummary = `${ageDesc} ${gender} presenting with ${symsShort.toLowerCase()} — indicating a ${riskLevel} ${conditionKey} requiring immediate intervention.`;
+
+  // Feature 5: AI confidence score
+  const confScore = Math.min(99, Math.round(60 + (al.total_score||5)*4 + (t.score||5)*2));
+  const confColor = confScore>=85?'var(--green)':confScore>=70?'var(--orange)':'var(--red)';
+
+  // Feature 6: Bed reservation simulation
+  const bedStatus = hospData.icu_available>0 ?
+    `<div class="bed-reserved"><div class="bed-reserved-icon">✅</div><div><div class="bed-reserved-title">ICU Bed Reserved</div><div class="bed-reserved-sub">${hospData.icu_available} beds available · confirmed for this patient</div></div></div>` :
+    hospData.available_beds>0 ?
+    `<div class="bed-reserved"><div class="bed-reserved-icon">✅</div><div><div class="bed-reserved-title">General Bed Reserved</div><div class="bed-reserved-sub">${hospData.available_beds} general beds · ICU monitoring pending</div></div></div>` :
+    `<div class="bed-reserved bed-pending"><div class="bed-reserved-icon">⏳</div><div><div class="bed-reserved-title">Bed Reservation Pending</div><div class="bed-reserved-sub">Hospital at capacity — rerouting in progress</div></div></div>`;
+
+  // Feature 7: Rerouting if hospital full
+  const rerouteHtml = (hospData.available_beds===0 && al.alternatives?.length) ?
+    `<div class="reroute-alert">
+      <div class="reroute-title">🔄 Auto-Rerouting Activated</div>
+      <div class="reroute-body">${al.hospital_name} is at full capacity. Rerouted to ${al.alternatives[0]?.hospital_name||'next available'} (${al.alternatives[0]?.distance_km||'?'}km away). Dashboard and map updated.</div>
+    </div>` : '';
+
+  el.innerHTML=`<div class="result-body">
+    ${rerouteHtml}
+
+    <div class="prio-badge prio-${t.priority}">${t.priority==='Critical'?'🔴':t.priority==='Moderate'?'🟠':'🟢'} ${t.priority} — ${t.score}/10</div>
+    <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:12px">Response needed: <strong>${t.response_time}</strong></div>
+
+    <!-- Feature 4: AI Auto-Summary -->
+    <div class="ai-summary-box">
+      <div class="ai-summary-label">🧠 AI Case Summary</div>
+      <div class="ai-summary-text">${autoSummary}</div>
+    </div>
+
+    <div class="dc">
+      <div class="dc-hdr"><span class="dc-icon">🏥</span><span class="dc-title">Hospital Assignment</span></div>
+      <div style="font-weight:700;font-size:0.9rem;margin-bottom:5px">${al.hospital_name}</div>
+      <div class="dc-body">${al.explanation}</div>
+
+      <!-- Feature 5: Confidence score -->
+      <div class="conf-bar-wrap">
+        <div class="conf-label">
+          <span style="color:var(--text-dim);font-size:0.68rem">AI Confidence Score</span>
+          <span class="conf-pct" style="color:${confColor}">${confScore}%</span>
+        </div>
+        <div class="conf-bar"><div class="conf-fill" style="width:${confScore}%;background:${confColor}"></div></div>
+        <div style="font-size:0.62rem;color:var(--text-dim);margin-top:3px">Based on distance, resource availability, and patient severity</div>
+      </div>
+
+      <div class="mini-grid">
+        <div class="mini-card"><div class="mini-val" style="color:var(--blue)">${al.distance_km}km</div><div class="mini-lbl">Distance</div></div>
+        <div class="mini-card"><div class="mini-val" style="color:var(--green)">${al.icu_available}</div><div class="mini-lbl">ICU Free</div></div>
+        <div class="mini-card"><div class="mini-val" style="color:var(--orange)">${al.avg_wait_time}m</div><div class="mini-lbl">Wait</div></div>
+      </div>
+      ${al.alternatives?.length?`<div style="margin-top:8px;font-size:0.68rem;color:var(--text-dim)">Alternatives: ${al.alternatives.map(a=>`${a.hospital_name} (${a.distance_km}km)`).join(' | ')}</div>`:''}
+
+      <!-- Feature 6: Bed reservation status -->
+      ${bedStatus}
+
+      <button class="action-btn-g" onclick="callHosp('${hospPhone}','${al.hospital_name}')">📞 Call ${al.hospital_name}</button>
+    </div>
+
+    <div class="dc">
+      <div class="dc-hdr"><span class="dc-icon">🚑</span><span class="dc-title">Ambulance Dispatched</span></div>
+      <div style="font-weight:700;font-size:0.9rem;margin-bottom:5px">${ro.call_sign} — ${ro.driver}</div>
+      <div class="dc-body">${ro.explanation}</div>
+      <div class="mini-grid-2">
+        <div class="mini-card"><div class="mini-val" style="color:var(--blue)">${ro.eta_minutes} min</div><div class="mini-lbl">ETA</div></div>
+        <div class="mini-card"><div class="mini-val" style="color:var(--green)">${ro.vitals_monitor?'✓ On':'—'}</div><div class="mini-lbl">Vitals</div></div>
+      </div>
+      <button class="action-btn-g" onclick="callDriver('${ro.driver_phone||''}','${ro.driver}')">📞 Call Driver ${ro.driver}</button>
+    </div>
+
+    <div class="dc">
+      <div class="dc-hdr"><span class="dc-icon">🧠</span><span class="dc-title">AI Triage Analysis</span></div>
+      <div class="dc-body">${t.explanation}</div>
+    </div>
+
+    <button class="action-btn-b" onclick="closeTriage();showHospDetail('${al.hospital_id}')">View Hospital on Dashboard →</button>
+  </div>`;
+}
+
+function resetTriage() {
+  ['f-name','f-symptoms','f-history'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('f-age').value=35;
+  document.getElementById('f-sev').value=5; onSev(5);
+  document.getElementById('ai-placeholder').style.display='flex';
+  document.getElementById('ai-result').style.display='none';
+  document.getElementById('reset-btn').style.display='none';
+  // Records column stays — shows history of past submissions
+}
+
+// FIXED: Emergency call modal
+function callDispatch() {
+  unlockAudio(); buzz('critical');
+  showCallModal('Emergency Dispatch (VitaCare)', '112', 'emergency');
+}
+
+// FIXED: Fetch LAN IP from server and show mobile access modal
+async function openMobile() {
+  unlockAudio();
+  const info = await fetch('/api/server-info').then(r=>r.json());
+  const mobileUrl = `http://${info.lan_ip}:${info.port}/mobile`;
+  showMobileModal(mobileUrl, info.lan_ip);
+}
+
+// ── Toast ──
+function toast(type, title, body) {
+  const c=document.getElementById('toast-c');
+  const t=document.createElement('div');
+  t.className=`toast ${type}`;
+  t.innerHTML=`<div class="toast-t">${title}</div><div class="toast-b">${body}</div>`;
+  c.appendChild(t);
+  setTimeout(()=>{ t.classList.add('out'); setTimeout(()=>t.remove(),300); },4500);
+}
+
+
+
+// ── Init ──
+initMap(); loadAll();
+window.addEventListener('resize', () => { if(map) map.invalidateSize(); });
+setTimeout(() => { if(map) { map.invalidateSize(); map.setView([12.9200,77.6100],11); } }, 500);
+setInterval(async()=>{
+  const [s,a]=await Promise.all([fetch('/api/stats').then(r=>r.json()),fetch('/api/alerts').then(r=>r.json())]);
+  updateStats(s); renderAlerts(a);
+},12000);
+</script>
+
+<!-- ═══ CALL MODAL ═══ -->
+<div id="call-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(6,12,24,0.85);backdrop-filter:blur(8px);align-items:center;justify-content:center;">
+  <div style="background:#0D1626;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:32px 36px;min-width:340px;max-width:420px;text-align:center;box-shadow:0 40px 80px rgba(0,0,0,0.7);position:relative;">
+    <button onclick="closeCallModal()" style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,0.07);border:none;color:#7A8BA4;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;">✕</button>
+    <div id="call-modal-icon" style="font-size:3rem;margin-bottom:12px">📞</div>
+    <div id="call-modal-name" style="font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;margin-bottom:6px;color:#E8EDF5"></div>
+    <div id="call-modal-phone" style="font-family:'JetBrains Mono',monospace;font-size:1.4rem;font-weight:700;color:#1E7FFF;margin-bottom:20px;letter-spacing:1px"></div>
+    <div style="font-size:0.78rem;color:#7A8BA4;margin-bottom:20px">On desktop: dial this number manually<br>On mobile: tap the button below to call</div>
+    <a id="call-modal-link" href="#" style="display:block;background:#00D68F;color:#000;padding:12px 24px;border-radius:12px;font-family:'Syne',sans-serif;font-weight:800;font-size:1rem;text-decoration:none;margin-bottom:10px;transition:all 0.2s">📞 Tap to Call (Mobile)</a>
+    <button onclick="copyPhone()" style="width:100%;background:rgba(30,127,255,0.15);border:1px solid rgba(30,127,255,0.4);color:#1E7FFF;padding:10px;border-radius:10px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:0.85rem">📋 Copy Number</button>
+  </div>
+</div>
+
+<!-- ═══ MOBILE ACCESS MODAL ═══ -->
+<div id="mobile-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(6,12,24,0.85);backdrop-filter:blur(8px);align-items:center;justify-content:center;">
+  <div style="background:#0D1626;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:32px 36px;min-width:360px;max-width:440px;text-align:center;box-shadow:0 40px 80px rgba(0,0,0,0.7);position:relative;">
+    <button onclick="closeMobileModal()" style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,0.07);border:none;color:#7A8BA4;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;">✕</button>
+    <div style="font-size:2.5rem;margin-bottom:10px">📱</div>
+    <div style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:800;margin-bottom:6px;color:#E8EDF5">Open on Your Phone</div>
+    <div style="font-size:0.8rem;color:#7A8BA4;margin-bottom:18px">Make sure your phone is on the <strong style="color:#E8EDF5">same WiFi</strong> as this Mac</div>
+
+    <!-- QR Code using Google Charts API -->
+    <div style="background:#fff;padding:12px;border-radius:14px;display:inline-block;margin-bottom:18px">
+      <img id="qr-img" src="" width="180" height="180" alt="QR Code" style="display:block">
+    </div>
+
+    <div style="font-size:0.72rem;color:#7A8BA4;margin-bottom:8px">Or type this URL in your phone's browser:</div>
+    <div id="mobile-url-display" style="font-family:'JetBrains Mono',monospace;font-size:0.85rem;font-weight:700;color:#1E7FFF;background:rgba(30,127,255,0.1);border:1px solid rgba(30,127,255,0.3);border-radius:10px;padding:10px 14px;margin-bottom:16px;word-break:break-all"></div>
+
+    <button onclick="copyMobileUrl()" style="width:100%;background:rgba(30,127,255,0.15);border:1px solid rgba(30,127,255,0.4);color:#1E7FFF;padding:10px;border-radius:10px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:0.85rem;margin-bottom:8px">📋 Copy URL</button>
+    <div style="font-size:0.7rem;color:#7A8BA4;margin-top:4px">If QR doesn't work, just type the URL above in Safari or Chrome on your phone</div>
+  </div>
+</div>
+
+<script>
+// ── Call Modal ──
+let currentPhone = '';
+function showCallModal(name, phone, type) {
+  currentPhone = phone;
+  const icon = type==='emergency' ? '🚨' : type==='ambulance' ? '🚑' : '🏥';
+  document.getElementById('call-modal-icon').textContent = icon;
+  document.getElementById('call-modal-name').textContent = name;
+  document.getElementById('call-modal-phone').textContent = phone;
+  document.getElementById('call-modal-link').href = 'tel:' + phone;
+  document.getElementById('call-modal').style.display = 'flex';
+  buzz(type==='emergency' ? 'critical' : 'warning');
+}
+function closeCallModal() { document.getElementById('call-modal').style.display = 'none'; }
+function copyPhone() {
+  navigator.clipboard.writeText(currentPhone).then(()=>{
+    toast('info','✅ Copied!','Phone number copied to clipboard');
+    closeCallModal();
+  }).catch(()=>{ toast('warning','Copy failed','Select and copy the number manually'); });
+}
+
+// ── Mobile Modal ──
+let currentMobileUrl = '';
+function showMobileModal(url, ip) {
+  currentMobileUrl = url;
+  document.getElementById('mobile-url-display').textContent = url;
+  // QR using Google Charts (no API key needed, free, works offline via CDN)
+  const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(url);
+  document.getElementById('qr-img').src = qrUrl;
+  document.getElementById('mobile-modal').style.display = 'flex';
+}
+function closeMobileModal() { document.getElementById('mobile-modal').style.display = 'none'; }
+function copyMobileUrl() {
+  navigator.clipboard.writeText(currentMobileUrl).then(()=>{
+    toast('info','✅ Copied!','URL copied — paste it in your phone browser');
+    closeMobileModal();
+  }).catch(()=>{ toast('warning','Copy failed','Type the URL manually on your phone'); });
+}
+
+// Close modals on backdrop click
+document.getElementById('call-modal').addEventListener('click', function(e){ if(e.target===this) closeCallModal(); });
+document.getElementById('mobile-modal').addEventListener('click', function(e){ if(e.target===this) closeMobileModal(); });
+</script>
+
+
+<!-- ═══ PATIENT RECORDS DRAWER ═══ -->
+<div id="records-drawer">
+  <div class="drawer-handle" onclick="toggleDrawer()">
+    <div class="drawer-title">
+      📋 Patient Records
+      <span class="drawer-badge" id="rec-count-badge">0</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="rec-tabs" onclick="event.stopPropagation()">
+        <div class="rec-tab active" onclick="filterRec('all')">All</div>
+        <div class="rec-tab" onclick="filterRec('Critical')">Critical</div>
+        <div class="rec-tab" onclick="filterRec('Moderate')">Moderate</div>
+        <div class="rec-tab" onclick="filterRec('Mild')">Mild</div>
+      </div>
+      <button onclick="toggleDrawer()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:0.9rem;display:flex;align-items:center;justify-content:center;">✕</button>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <input class="rec-search" id="rec-search" placeholder="Search patient name, ID, hospital..." oninput="renderRecords()">
+    <div id="rec-list"></div>
+  </div>
+</div>
+
+<!-- Floating Records Button -->
+<div id="records-fab" onclick="openDrawer()">
+  📋 Patient Records
+  <span id="records-fab-count" class="records-fab-count">0</span>
+</div>
+
+<script>
+// ── Hospital detail inner-tab system ──
+function hTab(hospId, tab) {
+  ['resources','doctors','reviews'].forEach(t => {
+    const el = document.getElementById(`hp-${hospId}-${t}`);
+    const tb = document.getElementById(`ht-${hospId}-${t}`);
+    if (el) el.classList.toggle('ha', t === tab);
+    if (tb) tb.classList.toggle('ha', t === tab);
+  });
+}
+
+function starStr(rating) {
+  const full = Math.floor(rating);
+  const half = rating % 1 >= 0.5 ? 1 : 0;
+  return '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(5 - full - half);
+}
+
+function initials(name) {
+  return name.split(' ').filter(w => w.startsWith('Dr.')||w.length>2).slice(1,3).map(w=>w[0]).join('');
+}
+
+// ── Patient Records Drawer ──
+let drawerOpen = false;
+let recFilter = 'all';
+let allPatients = [];
+
+function toggleDrawer() { drawerOpen ? closeDrawer() : openDrawer(); }
+function openDrawer() {
+  drawerOpen = true;
+  document.getElementById('records-drawer').classList.add('open');
+  renderRecords();
+}
+function closeDrawer() {
+  drawerOpen = false;
+  document.getElementById('records-drawer').classList.remove('open');
+}
+
+function filterRec(f) {
+  recFilter = f;
+  document.querySelectorAll('.rec-tab').forEach(t => {
+    t.classList.toggle('active', t.textContent.trim() === (f==='all'?'All':f));
+  });
+  renderRecords();
+}
+
+async function refreshRecords() {
+  const pats = await fetch('/api/patients').then(r=>r.json());
+  allPatients = pats;
+  const count = pats.length;
+  document.getElementById('rec-count-badge').textContent = count;
+  document.getElementById('records-fab-count').textContent = count;
+  if (drawerOpen) renderRecords();
+}
+
+function renderRecords() {
+  const search = (document.getElementById('rec-search')?.value || '').toLowerCase();
+  let pats = allPatients;
+  if (recFilter !== 'all') pats = pats.filter(p => p.priority === recFilter);
+  if (search) pats = pats.filter(p =>
+    p.name?.toLowerCase().includes(search) ||
+    p.id?.toLowerCase().includes(search) ||
+    (hosps[p.assigned_hospital]?.name || '').toLowerCase().includes(search) ||
+    p.symptoms?.toLowerCase().includes(search)
+  );
+
+  const el = document.getElementById('rec-list');
+  if (!el) return;
+  if (!pats.length) {
+    el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);font-size:0.82rem">No records found</div>';
+    return;
+  }
+
+  el.innerHTML = pats.map(p => {
+    const prioColor = p.priority==='Critical'?'var(--red)':p.priority==='Moderate'?'var(--orange)':'var(--green)';
+    const hospName = hosps[p.assigned_hospital]?.name || p.assigned_hospital || '—';
+    const ts = p.timestamp ? new Date(p.timestamp).toLocaleString('en-IN',{dateStyle:'short',timeStyle:'short'}) : '—';
+    const aiText = p.ai_decision?.explanation || p.ai_decision?.master_explanation || '—';
+    const sev = p.severity || '—';
+    return `<div class="rec-card">
+      <div class="rec-header">
+        <div>
+          <div class="rec-name">${p.name || 'Unknown'}</div>
+          <div class="rec-id">${p.id} &nbsp;·&nbsp; ${ts}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:0.68rem;font-weight:700;color:${prioColor};margin-bottom:3px">${p.priority || '—'}</div>
+          <div style="font-size:0.62rem;color:var(--text-dim)">${p.status || '—'}</div>
+        </div>
+      </div>
+      <div class="rec-grid">
+        <div class="rec-field"><div class="rec-field-lbl">Age</div><div class="rec-field-val">${p.age || '—'}</div></div>
+        <div class="rec-field"><div class="rec-field-lbl">Blood Group</div><div class="rec-field-val">${p.blood_group || '—'}</div></div>
+        <div class="rec-field"><div class="rec-field-lbl">Severity</div><div class="rec-field-val">${sev}/10</div></div>
+        <div class="rec-field"><div class="rec-field-lbl">Symptoms</div><div class="rec-field-val" style="font-size:0.65rem">${(p.symptoms||'—').substring(0,40)}</div></div>
+        <div class="rec-field"><div class="rec-field-lbl">Medical History</div><div class="rec-field-val" style="font-size:0.65rem">${(p.medical_history||'None').substring(0,40)}</div></div>
+        <div class="rec-field"><div class="rec-field-lbl">Assigned Hospital</div><div class="rec-field-val" style="font-size:0.65rem">${hospName.substring(0,24)}</div></div>
+      </div>
+      <div class="rec-ai"><strong>AI Decision:</strong> ${aiText.substring(0,180)}${aiText.length>180?'…':''}</div>
+    </div>`;
+  }).join('');
+}
+
+// Hook into existing socket/load flow
+const _origLoadPats = loadPatients;
+loadPatients = async function() {
+  await _origLoadPats();
+  refreshRecords();
+};
+
+// Initial load
+setTimeout(refreshRecords, 1500);
+
+// Keyboard shortcut: press R to open records
+document.addEventListener('keydown', e => {
+  if (e.key === 'r' && !e.target.matches('input,textarea,select')) openDrawer();
+  if (e.key === 'Escape' && drawerOpen) closeDrawer();
+});
+</script>
+
+</body>
+</html>

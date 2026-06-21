@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>VitaCare Mobile</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--bg:#060C18;--surface:#0D1626;--surface2:#131E30;--border:rgba(255,255,255,0.08);--blue:#1E7FFF;--red:#FF3B3B;--green:#00D68F;--orange:#FF9500;--text:#E8EDF5;--text-dim:#7A8BA4;}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;}
+body{display:flex;flex-direction:column;overflow:hidden;}
+
+.shell{display:flex;flex-direction:column;height:100vh;max-width:430px;margin:0 auto;position:relative;background:var(--bg);}
+
+/* Header */
+.mhdr{background:var(--surface);padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.mlogo{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;}
+.mlogo .v{color:var(--blue);} .mlogo .c{color:var(--red);}
+.mbadge{display:flex;align-items:center;gap:5px;background:rgba(255,59,59,0.15);border:1px solid var(--red);color:var(--red);padding:3px 9px;border-radius:12px;font-size:0.65rem;font-weight:700;}
+.bdot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:blink 1.2s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* Stats strip */
+.stats-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:10px 14px;flex-shrink:0;}
+.mstat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 4px;text-align:center;}
+.msv{font-family:'Syne',sans-serif;font-size:1rem;font-weight:800;}
+.msl{font-size:0.52rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;}
+
+/* Mini map */
+.mmap-wrap{flex-shrink:0;height:190px;margin:0 14px;border-radius:12px;overflow:hidden;border:1px solid var(--border);}
+#mmap{width:100%;height:100%;}
+
+/* Alert strip */
+.malert{flex-shrink:0;background:rgba(255,59,59,0.08);border-top:1px solid rgba(255,59,59,0.25);border-bottom:1px solid rgba(255,59,59,0.25);padding:6px 14px;font-size:0.7rem;color:var(--red);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* Scroll body */
+.mbody{flex:1;overflow-y:auto;padding:10px 14px;padding-bottom:80px;}
+.mbody::-webkit-scrollbar{display:none;}
+
+.sec-title{font-family:'Syne',sans-serif;font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:8px;margin-top:12px;}
+
+/* Assignment card */
+.assign-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;}
+.assign-card.critical{border-color:var(--red);box-shadow:0 0 20px rgba(255,59,59,0.1);}
+.assign-card.moderate{border-color:var(--orange);}
+.ac-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.ac-time{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--text-dim);}
+
+/* FIX 2: Priority badge */
+.pbadge{display:inline-flex;align-items:center;gap:5px;font-family:'Syne',sans-serif;font-size:0.72rem;font-weight:700;padding:4px 10px;border-radius:10px;}
+.pbadge-Critical{background:rgba(255,59,59,0.15);color:var(--red);border:1px solid var(--red);}
+.pbadge-Moderate{background:rgba(255,149,0,0.15);color:var(--orange);border:1px solid var(--orange);}
+.pbadge-Mild{background:rgba(0,214,143,0.15);color:var(--green);border:1px solid var(--green);}
+.pbadge-None{background:rgba(255,255,255,0.05);color:var(--text-dim);border:1px solid var(--border);}
+
+.ac-patient{font-family:'Syne',sans-serif;font-size:1rem;font-weight:800;margin-bottom:3px;}
+.ac-meta{font-size:0.7rem;color:var(--text-dim);margin-bottom:10px;}
+.ac-dest{background:var(--surface2);border-radius:10px;padding:10px;margin-bottom:10px;}
+.ac-dest-title{font-size:0.62rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;}
+.ac-dest-name{font-size:0.88rem;font-weight:600;margin-bottom:2px;}
+.ac-dest-meta{font-size:0.68rem;color:var(--text-dim);}
+.vitals-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
+.vital-card{background:var(--surface2);border-radius:10px;padding:10px;text-align:center;}
+.vital-val{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;}
+.vital-lbl{font-size:0.58rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;}
+
+/* FIX 2: Real call buttons */
+.mbtn{width:100%;padding:11px;border:none;border-radius:10px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:0.85rem;transition:all 0.2s;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;}
+.mbtn-red{background:var(--red);color:#fff;}
+.mbtn-red:hover{background:#ff5252;}
+.mbtn-blue{background:var(--blue);color:#fff;}
+.mbtn-blue:hover{background:#0066dd;}
+.mbtn-green{background:var(--green);color:#000;}
+.mbtn-ghost{background:transparent;border:1px solid var(--border);color:var(--text-dim);}
+
+/* Hospital cards */
+.hosp-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px;}
+.hc-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.hc-name{font-weight:600;font-size:0.85rem;}
+.hc-chip{font-size:0.6rem;font-weight:700;padding:2px 7px;border-radius:8px;}
+.hc-Available{background:rgba(0,214,143,0.15);color:var(--green);border:1px solid var(--green);}
+.hc-Limited{background:rgba(255,149,0,0.15);color:var(--orange);border:1px solid var(--orange);}
+.hc-Full{background:rgba(255,59,59,0.15);color:var(--red);border:1px solid var(--red);}
+.hc-metrics{display:flex;gap:12px;font-size:0.7rem;color:var(--text-dim);flex-wrap:wrap;}
+
+/* Quick triage form */
+.qform{display:flex;flex-direction:column;gap:10px;}
+.qinp,.qsel{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font-size:0.85rem;font-family:'DM Sans',sans-serif;outline:none;width:100%;transition:border-color 0.2s;}
+.qinp:focus,.qsel:focus{border-color:var(--blue);}
+.qsel option{background:var(--surface2);}
+
+/* Alerts list */
+.malert-card{background:var(--surface);border-radius:10px;padding:10px 12px;margin-bottom:8px;border-left:3px solid var(--orange);}
+.malert-card.critical{border-left-color:var(--red);}
+
+/* Bottom nav */
+.bnav{background:var(--surface);border-top:1px solid var(--border);display:flex;flex-shrink:0;position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;}
+.bnav-item{flex:1;padding:10px 4px;text-align:center;cursor:pointer;font-size:0.58rem;color:var(--text-dim);transition:color 0.2s;}
+.bnav-item.active{color:var(--blue);}
+.bnav-icon{font-size:1.1rem;margin-bottom:2px;}
+
+/* Views */
+.mview{display:none;}
+.mview.active{display:block;}
+
+/* Toast */
+.mtoast-c{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:6px;width:90%;max-width:380px;}
+.mtoast{background:var(--surface);border-radius:10px;padding:10px 14px;border-left:4px solid var(--blue);animation:msi 0.3s ease;box-shadow:0 6px 24px rgba(0,0,0,0.5);}
+.mtoast.critical{border-left-color:var(--red);}
+.mtoast.warning{border-left-color:var(--orange);}
+.mtoast-t{font-family:'Syne',sans-serif;font-size:0.75rem;font-weight:700;}
+.mtoast-b{font-size:0.68rem;color:var(--text-dim);}
+@keyframes msi{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Header -->
+  <div class="mhdr">
+    <div class="mlogo"><span class="v">Vita</span><span class="c">Care</span> <span style="font-size:0.7rem;color:var(--text-dim);font-weight:400">Mobile</span></div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--text-dim)" id="m-clock">--:--</div>
+      <div class="mbadge"><div class="bdot"></div>LIVE</div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-strip">
+    <div class="mstat"><div class="msv" id="m-beds" style="color:var(--blue)">--</div><div class="msl">Beds</div></div>
+    <div class="mstat"><div class="msv" id="m-crit" style="color:var(--red)">--</div><div class="msl">Critical</div></div>
+    <div class="mstat"><div class="msv" id="m-icu" style="color:var(--green)">--</div><div class="msl">ICU</div></div>
+    <div class="mstat"><div class="msv" id="m-ambs" style="color:var(--orange)">--</div><div class="msl">Ambs</div></div>
+  </div>
+
+  <!-- Mini Map -->
+  <div class="mmap-wrap"><div id="mmap"></div></div>
+
+  <!-- Alert strip -->
+  <div class="malert" id="malert-strip">⏳ Loading alerts...</div>
+
+  <!-- Body -->
+  <div class="mbody">
+
+    <!-- HOME VIEW -->
+    <div class="mview active" id="view-home">
+      <div class="sec-title">Active Assignment</div>
+
+      <div class="assign-card critical" id="assign-card">
+        <div class="ac-hdr">
+          <div class="pbadge pbadge-Critical" id="ac-priority">🔴 Critical</div>
+          <div class="ac-time" id="m-time">--:--:--</div>
+        </div>
+        <div class="ac-patient" id="ac-patient">Arjun Menon, 58</div>
+        <div class="ac-meta" id="ac-meta">B+ · Hypertension, Diabetes · Chest pain, SOB</div>
+
+        <div class="ac-dest">
+          <div class="ac-dest-title">Destination</div>
+          <div class="ac-dest-name" id="ac-dest-name">Apollo Emergency Center</div>
+          <div class="ac-dest-meta" id="ac-dest-meta">📍 Bannerghatta Road &nbsp;|&nbsp; ⏱ ETA: 12 min &nbsp;|&nbsp; 🛏 45 beds free</div>
+        </div>
+
+        <div class="vitals-row">
+          <div class="vital-card">
+            <div class="vital-val" id="v-hr" style="color:var(--red)">102</div>
+            <div class="vital-lbl">❤️ Heart Rate</div>
+          </div>
+          <div class="vital-card">
+            <div class="vital-val" id="v-o2" style="color:var(--blue)">94%</div>
+            <div class="vital-lbl">🫁 Oxygen SpO₂</div>
+          </div>
+        </div>
+
+        <!-- FIX 2: Real call button for hospital -->
+        <button class="mbtn mbtn-green" onclick="mCall('+918023456789','Apollo Emergency Center')">📞 Call Hospital</button>
+        <button class="mbtn mbtn-ghost" onclick="markArrived()">✅ Mark Arrived</button>
+      </div>
+
+      <div class="sec-title">My Status</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:0.88rem;color:var(--blue)">VCA-002</div>
+          <div style="display:flex;gap:6px">
+            <button onclick="setStatus('Available',this)" style="padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;font-size:0.68rem;font-weight:600;font-family:'DM Sans',sans-serif;">Free</button>
+            <button onclick="setStatus('En Route',this)" style="padding:4px 10px;border-radius:8px;border:1px solid var(--blue);background:var(--blue);color:#fff;cursor:pointer;font-size:0.68rem;font-weight:600;font-family:'DM Sans',sans-serif;">En Route</button>
+            <button onclick="setStatus('Busy',this)" style="padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;font-size:0.68rem;font-weight:600;font-family:'DM Sans',sans-serif;">Busy</button>
+          </div>
+        </div>
+        <div style="font-size:0.7rem;color:var(--text-dim);margin-top:6px">Driver: Suresh Nair &nbsp;|&nbsp; 📡 Vitals Monitor: Active</div>
+      </div>
+    </div>
+
+    <!-- HOSPITALS VIEW -->
+    <div class="mview" id="view-hospitals">
+      <div class="sec-title">All Hospitals</div>
+      <div id="m-hosp-list"></div>
+    </div>
+
+    <!-- QUICK REGISTER VIEW -->
+    <div class="mview" id="view-register">
+      <div class="sec-title">Quick Patient Register</div>
+      <div class="qform">
+        <input class="qinp" id="mf-name" placeholder="Patient Name" type="text">
+        <input class="qinp" id="mf-symptoms" placeholder="Symptoms (e.g. chest pain, fracture)">
+        <input class="qinp" id="mf-age" placeholder="Age" type="number" value="40">
+        <select class="qsel" id="mf-blood">
+          <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+          <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
+        </select>
+        <select class="qsel" id="mf-sev">
+          <option value="9">Critical (Severity 9-10)</option>
+          <option value="6">Moderate (Severity 6-8)</option>
+          <option value="3">Mild (Severity 1-5)</option>
+        </select>
+        <button class="mbtn mbtn-red" onclick="mTriage()">⚡ Send to AI System</button>
+      </div>
+      <div id="m-triage-result" style="margin-top:14px"></div>
+    </div>
+
+    <!-- ALERTS VIEW -->
+    <div class="mview" id="view-alerts">
+      <div class="sec-title">System Alerts</div>
+      <div id="m-alert-list"></div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Nav -->
+  <div class="bnav">
+    <div class="bnav-item active" onclick="switchView('home',this)"><div class="bnav-icon">🏠</div>Home</div>
+    <div class="bnav-item" onclick="switchView('hospitals',this)"><div class="bnav-icon">🏥</div>Hospitals</div>
+    <div class="bnav-item" onclick="switchView('register',this)"><div class="bnav-icon">➕</div>Register</div>
+    <div class="bnav-item" onclick="switchView('alerts',this)"><div class="bnav-icon">🔔</div>Alerts</div>
+  </div>
+</div>
+
+<div class="mtoast-c" id="mtoast-c"></div>
+
+<script>
+// ── FIX 3: Buzzer ──
+let audioCtx=null;
+function getAudio(){ if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)(); return audioCtx; }
+function buzz(type){
+  try{
+    const ctx=getAudio(),osc=ctx.createOscillator(),g=ctx.createGain();
+    osc.connect(g);g.connect(ctx.destination);
+    const t=ctx.currentTime;
+    if(type==='critical'){osc.frequency.setValueAtTime(900,t);osc.frequency.setValueAtTime(650,t+0.14);osc.frequency.setValueAtTime(900,t+0.28);g.gain.setValueAtTime(0.4,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.52);osc.start(t);osc.stop(t+0.52);}
+    else if(type==='warning'){osc.frequency.setValueAtTime(500,t);g.gain.setValueAtTime(0.25,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.25);osc.start(t);osc.stop(t+0.25);}
+    else{osc.frequency.setValueAtTime(340,t);g.gain.setValueAtTime(0.1,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.12);osc.start(t);osc.stop(t+0.12);}
+  }catch(e){}
+}
+function unlockAudio(){ try{getAudio();}catch(e){} }
+
+// ── Clock ──
+function tickClock(){const n=new Date();document.getElementById('m-clock').textContent=n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});document.getElementById('m-time').textContent=n.toLocaleTimeString('en-IN');}
+setInterval(tickClock,1000);tickClock();
+
+// ── Map ──
+let mmap;
+function initMap(){
+  mmap=L.map('mmap',{zoomControl:false,attributionControl:false}).setView([12.9352,77.6245],12);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(mmap);
+}
+
+// ── Load data ──
+async function loadAll(){
+  const[hosps,stats,alerts]=await Promise.all([
+    fetch('/api/hospitals').then(r=>r.json()),
+    fetch('/api/stats').then(r=>r.json()),
+    fetch('/api/alerts').then(r=>r.json())
+  ]);
+  updateStats(stats);
+  renderHospitals(hosps);
+  renderAlerts(alerts);
+  addMapMarkers(hosps);
+}
+
+function updateStats(s){
+  document.getElementById('m-beds').textContent=s.available_beds;
+  document.getElementById('m-crit').textContent=s.critical_patients;
+  document.getElementById('m-icu').textContent=s.available_icu;
+  document.getElementById('m-ambs').textContent=s.active_ambulances;
+}
+
+function addMapMarkers(hosps){
+  hosps.forEach(h=>{
+    const c=h.status==='Available'?'#00D68F':h.status==='Limited'?'#FF9500':'#FF3B3B';
+    L.circleMarker([h.lat,h.lng],{radius:8,color:c,fillColor:c,fillOpacity:0.85,weight:2}).addTo(mmap)
+      .bindPopup(`<b>${h.name}</b><br>Beds: ${h.available_beds}/${h.total_beds}<br>ICU: ${h.icu_available}`);
+  });
+  // Ambulance marker
+  L.circleMarker([12.9750,77.5800],{radius:7,color:'#1E7FFF',fillColor:'#1E7FFF',fillOpacity:0.9,weight:2}).addTo(mmap).bindPopup('VCA-002 — Your Location');
+}
+
+function renderHospitals(hosps){
+  document.getElementById('m-hosp-list').innerHTML=hosps.map(h=>`
+    <div class="hosp-card">
+      <div class="hc-hdr">
+        <div class="hc-name">${h.name}</div>
+        <div class="hc-chip hc-${h.status}">${h.status}</div>
+      </div>
+      <div class="hc-metrics">
+        <span>🛏 ${h.available_beds}/${h.total_beds}</span>
+        <span>ICU: ${h.icu_available}</span>
+        <span>⏱ ${h.avg_wait_time}m</span>
+        <span>O₂: ${h.oxygen_level}%</span>
+      </div>
+      <!-- FIX 2: Real call button on each hospital -->
+      <button class="mbtn mbtn-green" style="margin-top:8px;font-size:0.75rem;padding:8px" onclick="mCall('${h.phone}','${h.name}')">📞 ${h.phone}</button>
+    </div>`).join('');
+}
+
+function renderAlerts(alerts){
+  if(!alerts.length){
+    document.getElementById('malert-strip').textContent='✅ No active alerts';
+    document.getElementById('m-alert-list').innerHTML='<div style="text-align:center;padding:30px;color:var(--text-dim);font-size:0.82rem">✅ No active alerts</div>';
+    return;
+  }
+  const crit=alerts.find(a=>a.type==='critical');
+  document.getElementById('malert-strip').textContent=(crit?'🔴 ':'⚠️ ')+alerts[0].message+(alerts.length>1?` (+${alerts.length-1} more)`:'');
+  document.getElementById('m-alert-list').innerHTML=alerts.map(a=>`
+    <div class="malert-card ${a.type}">
+      <div style="font-size:0.78rem;font-weight:600">${a.type==='critical'?'🔴':'⚠️'} ${a.message}</div>
+    </div>`).join('');
+}
+
+// ── Calls: show modal with number + tap-to-call link ──
+function mCall(phone, name){
+  unlockAudio(); buzz('warning');
+  if (!phone || phone === '') { mToast('warning','No number','Phone number not available'); return; }
+  showMobileCallModal(name, phone);
+}
+
+function callAmbulanceDispatch(){
+  unlockAudio(); buzz('critical');
+  showMobileCallModal('Emergency Dispatch', '112');
+}
+
+function markArrived(){
+  buzz('info');
+  mToast('info','✅ Status Updated','Marked as arrived at hospital');
+}
+
+function setStatus(status, btn){
+  document.querySelectorAll('.bnav-item').forEach(b=>{ /* handled below */ });
+  // visual feedback — reset all status buttons
+  btn.closest('div').querySelectorAll('button').forEach(b=>{
+    b.style.background='transparent';b.style.color='var(--text-dim)';b.style.borderColor='var(--border)';
+  });
+  btn.style.background=status==='Available'?'var(--green)':status==='En Route'?'var(--blue)':'var(--orange)';
+  btn.style.color=status==='Available'?'#000':'#fff';
+  btn.style.borderColor='transparent';
+  buzz('info');
+  mToast('info','Status Updated',`Ambulance status: ${status}`);
+}
+
+// ── Quick Triage ──
+async function mTriage(){
+  unlockAudio();
+  const name=document.getElementById('mf-name').value||'Unknown';
+  const syms=document.getElementById('mf-symptoms').value;
+  const sev=parseInt(document.getElementById('mf-sev').value);
+  const age=parseInt(document.getElementById('mf-age').value)||35;
+  const blood=document.getElementById('mf-blood').value;
+  if(!syms){mToast('warning','Missing','Enter symptoms');return;}
+  document.getElementById('m-triage-result').innerHTML='<div style="text-align:center;padding:20px;color:var(--text-dim)">⏳ AI processing...</div>';
+  try{
+    const res=await fetch('/api/triage',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,symptoms:syms,severity:sev,age,blood_group:blood,location:{lat:12.94,lng:77.60}})});
+    const d=await res.json();
+    const t=d.triage,al=d.allocation,ro=d.routing;
+    const pColor=t.priority==='Critical'?'var(--red)':t.priority==='Moderate'?'var(--orange)':'var(--green)';
+    buzz(t.priority==='Critical'?'critical':'warning');
+    document.getElementById('m-triage-result').innerHTML=`
+      <div style="background:var(--surface);border:1px solid ${pColor};border-radius:12px;padding:14px">
+        <div class="pbadge pbadge-${t.priority}" style="margin-bottom:8px">${t.priority} — ${t.score}/10</div>
+        <div style="font-size:0.78rem;margin-bottom:4px"><strong>Hospital:</strong> ${al.hospital_name}</div>
+        <div style="font-size:0.78rem;margin-bottom:4px"><strong>Ambulance:</strong> ${ro.call_sign} — ETA ${ro.eta_minutes} min</div>
+        <div style="font-size:0.72rem;color:var(--text-dim);margin-top:6px">${al.explanation}</div>
+        <button class="mbtn mbtn-green" style="margin-top:10px;font-size:0.75rem;padding:8px" onclick="mCall('${d.allocation.hospital_id?'+918023456789':''}','${al.hospital_name}')">📞 Call ${al.hospital_name}</button>
+        <button class="mbtn mbtn-blue" style="font-size:0.75rem;padding:8px" onclick="mCall('${ro.driver_phone||''}','${ro.driver}')">📞 Call Driver ${ro.driver}</button>
+      </div>`;
+    // Update home card
+    document.getElementById('ac-priority').className=`pbadge pbadge-${t.priority}`;
+    document.getElementById('ac-priority').textContent=(t.priority==='Critical'?'🔴':t.priority==='Moderate'?'🟠':'🟢')+' '+t.priority;
+    document.getElementById('ac-patient').textContent=`${name}, ${age}`;
+    document.getElementById('ac-meta').textContent=`${blood} · ${syms.substring(0,50)}`;
+    document.getElementById('ac-dest-name').textContent=al.hospital_name;
+    document.getElementById('ac-dest-meta').textContent=`${al.distance_km}km away | ⏱ ETA: ${ro.eta_minutes} min | 🛏 ${al.available_beds} beds`;
+    document.getElementById('assign-card').className='assign-card '+(t.priority==='Critical'?'critical':'moderate');
+  }catch(e){
+    document.getElementById('m-triage-result').innerHTML='<div style="color:var(--red);font-size:0.8rem">❌ Connection error. Is the server running?</div>';
+  }
+}
+
+// ── View switcher ──
+function switchView(name, el){
+  document.querySelectorAll('.mview').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  document.querySelectorAll('.bnav-item').forEach(n=>n.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// ── Toast ──
+function mToast(type,title,body){
+  const c=document.getElementById('mtoast-c');
+  const t=document.createElement('div');
+  t.className=`mtoast ${type}`;
+  t.innerHTML=`<div class="mtoast-t">${title}</div><div class="mtoast-b">${body}</div>`;
+  c.appendChild(t);
+  setTimeout(()=>t.remove(),3500);
+}
+
+// ── Vitals simulation ──
+setInterval(()=>{
+  document.getElementById('v-hr').textContent=97+Math.floor(Math.random()*12);
+  document.getElementById('v-o2').textContent=(92+Math.floor(Math.random()*5))+'%';
+},3000);
+
+// ── Periodic stats refresh ──
+setInterval(async()=>{
+  const[s,a]=await Promise.all([fetch('/api/stats').then(r=>r.json()),fetch('/api/alerts').then(r=>r.json())]);
+  updateStats(s); renderAlerts(a);
+},12000);
+
+// ── Init ──
+initMap(); loadAll();
+</script>
+
+<!-- Call Modal for Mobile -->
+<div id="mob-call-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(6,12,24,0.9);align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#0D1626;border:1px solid rgba(255,255,255,0.12);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.8);position:relative">
+    <button onclick="closeMobCall()" style="position:absolute;top:12px;right:14px;background:rgba(255,255,255,0.07);border:none;color:#7A8BA4;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:1rem">✕</button>
+    <div style="font-size:2.5rem;margin-bottom:10px">📞</div>
+    <div id="mob-call-name" style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:800;color:#E8EDF5;margin-bottom:6px"></div>
+    <div id="mob-call-phone" style="font-family:'JetBrains Mono',monospace;font-size:1.5rem;font-weight:700;color:#1E7FFF;margin-bottom:18px;letter-spacing:2px"></div>
+    <a id="mob-call-link" href="#" style="display:block;background:#00D68F;color:#000;padding:14px;border-radius:12px;font-family:'Syne',sans-serif;font-weight:800;font-size:1rem;text-decoration:none;margin-bottom:10px">📞 Tap to Call</a>
+    <button onclick="copyMobPhone()" style="width:100%;background:rgba(30,127,255,0.12);border:1px solid rgba(30,127,255,0.3);color:#1E7FFF;padding:11px;border-radius:10px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:0.85rem">📋 Copy Number</button>
+    <div style="font-size:0.68rem;color:#7A8BA4;margin-top:12px">On iPhone: tap "Tap to Call"<br>On desktop: dial manually</div>
+  </div>
+</div>
+<script>
+let _mobPhone='';
+function showMobileCallModal(name,phone){
+  _mobPhone=phone;
+  document.getElementById('mob-call-name').textContent=name;
+  document.getElementById('mob-call-phone').textContent=phone;
+  document.getElementById('mob-call-link').href='tel:'+phone;
+  document.getElementById('mob-call-modal').style.display='flex';
+}
+function closeMobCall(){ document.getElementById('mob-call-modal').style.display='none'; }
+function copyMobPhone(){
+  navigator.clipboard.writeText(_mobPhone).then(()=>{ mToast('info','Copied!','Number copied'); closeMobCall(); }).catch(()=>mToast('warning','Copy','Select number manually'));
+}
+document.getElementById('mob-call-modal').addEventListener('click',function(e){if(e.target===this)closeMobCall();});
+</script>
+
+</body>
+</html>
