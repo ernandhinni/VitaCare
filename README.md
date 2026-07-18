@@ -228,12 +228,6 @@ Zero Node.js. Zero npm. Zero webpack. Pure Python backend + plain browser fronte
 
 ---
 
-## License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
 ## Acknowledgements
 
 Built with [Flask](https://flask.palletsprojects.com), [Leaflet.js](https://leafletjs.com), [Chart.js](https://chartjs.org), [Socket.IO](https://socket.io), and [CartoDB](https://carto.com) map tiles.
